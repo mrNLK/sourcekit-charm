@@ -36,44 +36,78 @@ interface ResearchData {
   raw?: string;
 }
 
-function parseResearchOutput(data: any): ResearchData {
+interface ResearchBasis {
+  url?: string;
+  title?: string;
+}
+
+function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[] } {
   const output = data?.research_output || data?.result_data?.output || data?.output || data?.result || data?.data || data?.response || "";
   const text = typeof output === "string" ? output : JSON.stringify(output);
+  const basis: ResearchBasis[] = Array.isArray(data?.basis) ? data.basis : Array.isArray(data?.result_data?.basis) ? data.result_data.basis : [];
 
   const companies: { name: string; rationale: string }[] = [];
   const eeaSignals: string[] = [];
   const keywords: string[] = [];
-  const skills: string[] = [];
-  const filters: string[] = [];
 
-  const companySection = text.match(/(?:companies|target companies|1\))[^]*?(?=2\)|evidence of exceptional|eea|$)/i)?.[0] || "";
-  const companyLines = companySection.split(/\n/).filter((l: string) => l.trim().length > 5);
-  for (const line of companyLines) {
-    const match = line.match(/[-•*\d.]+\s*\*?\*?([^:*\n-]+?)\*?\*?\s*[-:–]\s*(.+)/);
-    if (match) {
-      companies.push({ name: match[1].trim(), rationale: match[2].trim() });
+  // Split text into sections by markdown headers (##, ###) or numbered sections (1), 2), etc.)
+  const sections: { title: string; body: string }[] = [];
+  const headerPattern = /(?:^|\n)(#{1,3}\s+.+|(?:\d+\)\s*.+))/g;
+  let lastIdx = 0;
+  let lastTitle = "";
+  let match: RegExpExecArray | null;
+  const headerMatches: { title: string; start: number; end: number }[] = [];
+
+  while ((match = headerPattern.exec(text)) !== null) {
+    headerMatches.push({ title: match[1].trim(), start: match.index, end: match.index + match[0].length });
+  }
+
+  for (let i = 0; i < headerMatches.length; i++) {
+    if (i > 0) {
+      sections.push({ title: lastTitle, body: text.slice(lastIdx, headerMatches[i].start).trim() });
     }
+    lastTitle = headerMatches[i].title.replace(/^#{1,3}\s+/, "").replace(/^\d+\)\s*/, "");
+    lastIdx = headerMatches[i].end;
+  }
+  if (headerMatches.length > 0) {
+    sections.push({ title: lastTitle, body: text.slice(lastIdx).trim() });
   }
 
-  const eeaSection = text.match(/(?:evidence of exceptional|eea|2\))[^]*?(?=3\)|search keywords|search criteria|$)/i)?.[0] || "";
-  const eeaLines = eeaSection.split(/\n/).filter((l: string) => l.trim().match(/^[-•*\d.]/));
-  for (const line of eeaLines) {
-    const cleaned = line.replace(/^[-•*\d.]+\s*/, "").trim();
-    if (cleaned.length > 3) eeaSignals.push(cleaned);
-  }
+  for (const section of sections) {
+    const titleLower = section.title.toLowerCase();
+    const lines = section.body.split(/\n/).filter((l: string) => l.trim().length > 3);
 
-  const searchSection = text.match(/(?:search keywords|search criteria|3\))[^]*$/i)?.[0] || "";
-  const searchLines = searchSection.split(/\n/).filter((l: string) => l.trim().match(/^[-•*\d.]/));
-  for (const line of searchLines) {
-    const cleaned = line.replace(/^[-•*\d.]+\s*/, "").trim();
-    if (cleaned.length > 2) keywords.push(cleaned);
+    if (titleLower.includes("compan") || titleLower.includes("target")) {
+      for (const line of lines) {
+        const m = line.match(/[-•*\d.]+\s*\*?\*?([^:*\n]+?)\*?\*?\s*[-:–]\s*(.+)/);
+        if (m) {
+          companies.push({ name: m[1].trim(), rationale: m[2].trim() });
+        } else {
+          const bold = line.match(/\*\*([^*]+)\*\*[:\s-]*(.+)?/);
+          if (bold) {
+            companies.push({ name: bold[1].trim(), rationale: (bold[2] || "").trim() });
+          }
+        }
+      }
+    } else if (titleLower.includes("eea") || titleLower.includes("evidence") || titleLower.includes("exceptional") || titleLower.includes("signal")) {
+      for (const line of lines) {
+        const cleaned = line.replace(/^[-•*\d.]+\s*/, "").replace(/\*\*/g, "").trim();
+        if (cleaned.length > 3) eeaSignals.push(cleaned);
+      }
+    } else if (titleLower.includes("search") || titleLower.includes("keyword") || titleLower.includes("criteria") || titleLower.includes("skill")) {
+      for (const line of lines) {
+        const cleaned = line.replace(/^[-•*\d.]+\s*/, "").replace(/\*\*/g, "").trim();
+        if (cleaned.length > 2) keywords.push(cleaned);
+      }
+    }
   }
 
   return {
     target_companies: companies.length > 0 ? companies : undefined,
     eea_signals: eeaSignals.length > 0 ? eeaSignals : undefined,
-    search_criteria: keywords.length > 0 ? { keywords, skills, filters } : undefined,
+    search_criteria: keywords.length > 0 ? { keywords, skills: [], filters: [] } : undefined,
     raw: text,
+    basis: basis.length > 0 ? basis : undefined,
   };
 }
 
@@ -792,82 +826,120 @@ export default function SearchTab() {
 
           {researchData && !researching && (
             <div className="space-y-3">
-              {researchData.target_companies && researchData.target_companies.length > 0 && (
-                <div className="glass-card overflow-hidden">
-                  <button onClick={() => toggleSection("companies")} className="w-full flex items-center justify-between p-4 text-left">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold text-foreground">Target Companies</span>
-                      <span className="text-xs text-muted-foreground">({researchData.target_companies.length})</span>
-                    </div>
-                    {expandedSections.has("companies") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                  </button>
-                  {expandedSections.has("companies") && (
-                    <div className="px-4 pb-4 space-y-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        {researchData.target_companies.map((c, i) => (
-                          <div key={i} className="group relative">
-                            <span className="inline-block rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary cursor-default">{c.name}</span>
-                            {c.rationale && (
-                              <div className="hidden group-hover:block absolute z-10 bottom-full left-0 mb-1 p-2 rounded-md bg-popover border border-border shadow-lg max-w-[250px]">
-                                <p className="text-xs text-popover-foreground">{c.rationale}</p>
-                              </div>
-                            )}
+              {(() => {
+                const hasParsed = !!(researchData.target_companies?.length || researchData.eea_signals?.length || researchData.search_criteria?.keywords.length);
+
+                if (hasParsed) {
+                  return (
+                    <>
+                      {/* Target Companies */}
+                      {researchData.target_companies && researchData.target_companies.length > 0 && (
+                        <div className="glass-card p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">Target Companies</span>
+                            <span className="text-xs text-muted-foreground">({researchData.target_companies.length})</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {researchData.eea_signals && researchData.eea_signals.length > 0 && (
-                <div className="glass-card overflow-hidden">
-                  <button onClick={() => toggleSection("eea")} className="w-full flex items-center justify-between p-4 text-left">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold text-foreground">EEA Signals</span>
-                    </div>
-                    {expandedSections.has("eea") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                  </button>
-                  {expandedSections.has("eea") && (
-                    <div className="px-4 pb-4 space-y-1.5">
-                      {researchData.eea_signals.map((signal, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                          <p className="text-xs text-secondary-foreground">{signal}</p>
+                          <div className="grid gap-2">
+                            {researchData.target_companies.map((c, i) => (
+                              <div key={i} className="rounded-lg bg-secondary/60 border border-border px-3 py-2">
+                                <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                                {c.rationale && <p className="text-xs text-muted-foreground mt-0.5">{c.rationale}</p>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                      )}
 
-              {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
-                <div className="glass-card overflow-hidden">
-                  <button onClick={() => toggleSection("criteria")} className="w-full flex items-center justify-between p-4 text-left">
-                    <div className="flex items-center gap-2">
-                      <Search className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold text-foreground">Search Criteria</span>
-                    </div>
-                    {expandedSections.has("criteria") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                  </button>
-                  {expandedSections.has("criteria") && (
-                    <div className="px-4 pb-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {researchData.search_criteria.keywords.map((kw, i) => (
-                          <span key={i} className="inline-block rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground">{kw}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                      {/* EEA Signals */}
+                      {researchData.eea_signals && researchData.eea_signals.length > 0 && (
+                        <div className="glass-card p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">EEA Signals</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {researchData.eea_signals.map((signal, i) => (
+                              <div key={i} className="flex items-start gap-2">
+                                <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
+                                <p className="text-sm text-secondary-foreground">{signal}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-              {!researchData.target_companies?.length && !researchData.eea_signals?.length && !researchData.search_criteria?.keywords.length && researchData.raw && (
-                <div className="glass-card p-4">
-                  <p className="text-xs text-muted-foreground mb-2">Research Output</p>
-                  <div className="text-xs text-secondary-foreground whitespace-pre-wrap max-h-96 overflow-y-auto font-mono">{researchData.raw}</div>
+                      {/* Search Criteria */}
+                      {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
+                        <div className="glass-card p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Search className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">Search Criteria</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {researchData.search_criteria.keywords.map((kw, i) => (
+                              <span key={i} className="inline-block rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary">{kw}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                }
+
+                // Fallback: render full markdown as formatted text
+                return (
+                  <div className="glass-card p-5" style={{ minHeight: 400 }}>
+                    <p className="text-xs text-muted-foreground mb-3">Research Output</p>
+                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                      {researchData.raw?.split("\n").map((line, i) => {
+                        const trimmed = line.trim();
+                        if (!trimmed) return <br key={i} />;
+                        // Headers
+                        if (trimmed.startsWith("### ")) return <p key={i} className="font-semibold text-foreground mt-4 mb-1">{trimmed.replace(/^###\s+/, "")}</p>;
+                        if (trimmed.startsWith("## ")) return <p key={i} className="font-bold text-foreground text-base mt-5 mb-1">{trimmed.replace(/^##\s+/, "")}</p>;
+                        if (trimmed.startsWith("# ")) return <p key={i} className="font-bold text-foreground text-lg mt-5 mb-2">{trimmed.replace(/^#\s+/, "")}</p>;
+                        // Bullet points
+                        if (trimmed.match(/^[-•*]\s/)) return (
+                          <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                            <span>{trimmed.replace(/^[-•*]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
+                          </div>
+                        );
+                        // Numbered items
+                        if (trimmed.match(/^\d+[.)]\s/)) return (
+                          <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                            <span>{trimmed.replace(/^\d+[.)]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
+                          </div>
+                        );
+                        // Bold inline
+                        return <p key={i} className="my-0.5" dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") }} />;
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Citations / Basis */}
+              {(researchData as any).basis && (researchData as any).basis.length > 0 && (
+                <div className="glass-card p-4 space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium">Sources</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {(researchData as any).basis.map((ref: any, i: number) => (
+                      <a
+                        key={i}
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        <span className="text-muted-foreground">[{i + 1}]</span>
+                        {ref.title || new URL(ref.url).hostname}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
 
