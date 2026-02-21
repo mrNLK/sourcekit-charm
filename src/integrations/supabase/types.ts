@@ -44,6 +44,36 @@ export type Database = {
         }
         Relationships: []
       }
+      role_research: {
+        Row: {
+          company_name: string
+          created_at: string
+          created_by: string
+          id: string
+          job_spec: string | null
+          job_title: string
+          research_data: Json | null
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          created_by: string
+          id?: string
+          job_spec?: string | null
+          job_title: string
+          research_data?: Json | null
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          job_spec?: string | null
+          job_title?: string
+          research_data?: Json | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
