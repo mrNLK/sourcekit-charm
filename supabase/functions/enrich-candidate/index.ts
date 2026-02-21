@@ -42,13 +42,48 @@ serve(async (req) => {
     const candidateDescription = description || "";
     const candidateLinkedin = linkedin_url || handle || "";
 
-    if (!candidateCompany && !candidateDescription) {
-      return new Response(JSON.stringify({ error: "Company or description is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Phase 1: Exa web search for real-world context
+    const exaApiKey = Deno.env.get("EXA_API_KEY");
+    let exaContext = "";
+
+    if (exaApiKey && candidateName !== "Unknown") {
+      try {
+        const searchQuery = candidateLinkedin
+          ? candidateLinkedin
+          : `"${candidateName}" ${candidateCompany} ${candidateTitle}`;
+
+        const exaRes = await fetch("https://api.exa.ai/search", {
+          method: "POST",
+          headers: {
+            "x-api-key": exaApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: searchQuery,
+            type: "auto",
+            numResults: 5,
+            contents: {
+              text: { maxCharacters: 1000 },
+            },
+          }),
+        });
+
+        if (exaRes.ok) {
+          const exaData = await exaRes.json();
+          const snippets = (exaData.results || [])
+            .map((r: any) => `[${r.title}](${r.url})\n${r.text || ""}`)
+            .join("\n\n");
+          exaContext = snippets ? `\n\nWeb search results about this person:\n${snippets}` : "";
+          console.log(`Exa search returned ${exaData.results?.length || 0} results for "${candidateName}"`);
+        } else {
+          console.warn("Exa search failed:", exaRes.status);
+        }
+      } catch (exaErr) {
+        console.warn("Exa search error:", exaErr);
+      }
     }
 
+    // Phase 2: LLM synthesis
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
@@ -66,7 +101,7 @@ Candidate:
 - Title: ${candidateTitle}
 - Company: ${candidateCompany}
 - LinkedIn: ${candidateLinkedin}
-- Description: ${candidateDescription}
+- Description: ${candidateDescription}${exaContext}
 
 Return the enrichment using the provided tool.`;
 
