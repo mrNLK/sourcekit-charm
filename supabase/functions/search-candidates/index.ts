@@ -174,8 +174,9 @@ serve(async (req) => {
             console.log(`Item ${item.id} properties keys:`, propKeys, JSON.stringify(item.properties));
           }
 
-          // Extract name: try item fields first, then enrichment properties
-          let name = item.properties?.name || item.name || "";
+          // Extract name: try person object first, then item fields
+          const person = item.properties?.person;
+          let name = person?.name || item.properties?.name || item.name || "";
           
           // Also check other potential name fields in properties
           if (!name && item.properties) {
@@ -227,8 +228,9 @@ serve(async (req) => {
             }
           }
 
-          // Extract URL from description if item.url is empty
-          let url = item.url || "";
+          // Extract URL: try person LinkedIn, then item.url, then description
+          let url = person?.url || item.properties?.url || item.url || "";
+          if (url && !url.startsWith("http")) url = "https://" + url;
           if (!url && desc) {
             const linkedinMatch = desc.match(/linkedin\.com\/in\/[a-zA-Z0-9-]+/);
             if (linkedinMatch) url = "https://" + linkedinMatch[0];
@@ -241,6 +243,12 @@ serve(async (req) => {
             description: desc,
             highlights: item.highlights || [],
             source: item.sourceUrl || url || "",
+            person: person ? {
+              position: person.position || "",
+              company: person.company?.name || "",
+              location: person.location || "",
+              pictureUrl: person.pictureUrl || "",
+            } : undefined,
           };
         }),
       }), {
