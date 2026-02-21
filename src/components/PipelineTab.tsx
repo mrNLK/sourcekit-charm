@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   Loader2, Search, Trash2, ChevronDown, ChevronUp, Download, Share2,
   ArrowRight, X, Plus, SortDesc, MessageSquare, Tag, Copy, Check, RefreshCw,
+  ExternalLink, Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CandidateCard from "./CandidateCard";
@@ -446,7 +447,49 @@ export default function PipelineTab() {
 
                     <CandidateCard data={c} />
 
-                    {/* Notes section */}
+                    {/* EEA Signals + Evidence */}
+                    {c.enrichment_data?.score_signals && (
+                      <div className="glass-card p-4 space-y-3">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                          <Shield className="h-3.5 w-3.5 text-primary" /> EEA Signals
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(c.enrichment_data.score_signals as Record<string, boolean>).map(([key, val]) => (
+                            <span
+                              key={key}
+                              className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-medium border",
+                                val
+                                  ? "bg-primary/15 text-primary border-primary/25"
+                                  : "bg-secondary text-muted-foreground/50 border-border line-through"
+                              )}
+                            >
+                              {key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}
+                            </span>
+                          ))}
+                        </div>
+                        {c.enrichment_data.evidence && Object.values(c.enrichment_data.evidence as Record<string, string>).some(v => v) && (
+                          <div className="space-y-1.5 pt-1 border-t border-border">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Evidence</p>
+                            {Object.entries(c.enrichment_data.evidence as Record<string, string>)
+                              .filter(([, v]) => v)
+                              .map(([key, val]) => (
+                                <div key={key} className="flex items-start gap-2 text-xs">
+                                  <span className="text-primary font-medium shrink-0">{key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}</span>
+                                  {val.startsWith("http") ? (
+                                    <a href={val} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground truncate flex items-center gap-1">
+                                      {val.replace(/https?:\/\/(www\.)?/, "").split("/").slice(0, 2).join("/")}
+                                      <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-muted-foreground truncate">{val}</span>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="glass-card p-4 space-y-2">
                       <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                         <MessageSquare className="h-3.5 w-3.5" /> Notes
