@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
 
 type Mode = "research" | "search" | "enrich";
 type ResearchInput = "quick" | "full";
+type SourceFilter = "all" | "linkedin" | "github" | "enriched";
 
 interface SearchResult {
   name: string;
@@ -19,6 +20,8 @@ interface SearchResult {
   summary?: string;
   url?: string;
   source?: string;
+  autoEnriched?: boolean;
+  enrichmentData?: any;
 }
 
 interface ResearchData {
@@ -29,18 +32,15 @@ interface ResearchData {
 }
 
 function parseResearchOutput(data: any): ResearchData {
-  // Try to extract structured data from the response
   const output = data?.output || data?.result || data?.data || data?.response || "";
   const text = typeof output === "string" ? output : JSON.stringify(output);
 
-  // Try to parse sections from the text
   const companies: { name: string; rationale: string }[] = [];
   const eeaSignals: string[] = [];
   const keywords: string[] = [];
   const skills: string[] = [];
   const filters: string[] = [];
 
-  // Simple heuristic parsing - extract company names and rationales
   const companySection = text.match(/(?:companies|target companies|1\))[^]*?(?=2\)|evidence of exceptional|eea|$)/i)?.[0] || "";
   const companyLines = companySection.split(/\n/).filter((l: string) => l.trim().length > 5);
   for (const line of companyLines) {
@@ -50,7 +50,6 @@ function parseResearchOutput(data: any): ResearchData {
     }
   }
 
-  // Extract EEA signals
   const eeaSection = text.match(/(?:evidence of exceptional|eea|2\))[^]*?(?=3\)|search keywords|search criteria|$)/i)?.[0] || "";
   const eeaLines = eeaSection.split(/\n/).filter((l: string) => l.trim().match(/^[-•*\d.]/));
   for (const line of eeaLines) {
@@ -58,7 +57,6 @@ function parseResearchOutput(data: any): ResearchData {
     if (cleaned.length > 3) eeaSignals.push(cleaned);
   }
 
-  // Extract search criteria
   const searchSection = text.match(/(?:search keywords|search criteria|3\))[^]*$/i)?.[0] || "";
   const searchLines = searchSection.split(/\n/).filter((l: string) => l.trim().match(/^[-•*\d.]/));
   for (const line of searchLines) {
@@ -72,6 +70,46 @@ function parseResearchOutput(data: any): ResearchData {
     search_criteria: keywords.length > 0 ? { keywords, skills, filters } : undefined,
     raw: text,
   };
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function getSourceLabel(source?: string): string {
+  switch (source) {
+    case "linkedin": return "LinkedIn";
+    case "github": return "GitHub";
+    case "scholar": return "Scholar";
+    case "twitter": return "X";
+    default: return "Web";
+  }
+}
+
+function getSourceBadgeClasses(source?: string): string {
+  switch (source) {
+    case "linkedin": return "bg-primary/20 text-primary";
+    case "github": return "bg-muted text-muted-foreground";
+    case "scholar": return "bg-blue-500/20 text-blue-400";
+    default: return "bg-muted text-muted-foreground";
+  }
+}
+
+function isStrongGitHubProfile(summary?: string): boolean {
+  if (!summary) return false;
+  const text = summary.toLowerCase();
+  // Heuristic: look for signals of a strong profile
+  const starMatch = text.match(/stars?[:\s]*(\d+)/i);
+  if (starMatch && parseInt(starMatch[1]) > 100) return true;
+  const followerMatch = text.match(/followers?[:\s]*(\d+)/i);
+  if (followerMatch && parseInt(followerMatch[1]) > 500) return true;
+  // Also check for keywords suggesting active/notable profiles
+  if (text.includes("contributions") && text.includes("repositories")) return true;
+  return false;
 }
 
 export default function SearchTab() {
@@ -99,6 +137,10 @@ export default function SearchTab() {
   const [enrichedIdx, setEnrichedIdx] = useState<number | null>(null);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [savedIdxs, setSavedIdxs] = useState<Set<number>>(new Set());
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [autoEnrichCount, setAutoEnrichCount] = useState(0);
+  const [autoEnrichDone, setAutoEnrichDone] = useState(0);
+  const [autoEnriching, setAutoEnriching] = useState(false);
 
   // Research state
   const [researchInput, setResearchInput] = useState<ResearchInput>("quick");
@@ -123,6 +165,39 @@ export default function SearchTab() {
       return next;
     });
   };
+
+  // Auto-enrich strong GitHub profiles
+  const autoEnrichProfiles = useCallback(async (results: SearchResult[]) => {
+    const githubTargets = results
+      .map((r, i) => ({ ...r, originalIdx: i }))
+      .filter((r) => r.source === "github" && isStrongGitHubProfile(r.summary));
+
+    if (githubTargets.length === 0) return;
+
+    setAutoEnriching(true);
+    setAutoEnrichCount(githubTargets.length);
+    setAutoEnrichDone(0);
+
+    for (const target of githubTargets) {
+      try {
+        const { data, error } = await supabase.functions.invoke("enrich-candidate", {
+          body: { name: target.name, company: target.company, role: target.role || "", handle: "" },
+        });
+        if (!error && data) {
+          setSearchResults((prev) =>
+            prev.map((r, i) =>
+              i === target.originalIdx ? { ...r, autoEnriched: true, enrichmentData: data } : r
+            )
+          );
+        }
+      } catch {
+        // Skip failed auto-enrichments silently
+      }
+      setAutoEnrichDone((prev) => prev + 1);
+    }
+
+    setAutoEnriching(false);
+  }, []);
 
   // ---- Enrich mode ----
   const handleEnrich = async (e: React.FormEvent) => {
@@ -171,6 +246,9 @@ export default function SearchTab() {
     setSearchResults([]);
     setEnrichedResult(null);
     setEnrichedIdx(null);
+    setSourceFilter("all");
+    setAutoEnrichCount(0);
+    setAutoEnrichDone(0);
     try {
       const { data, error } = await supabase.functions.invoke("search-candidates", {
         body: {
@@ -191,10 +269,13 @@ export default function SearchTab() {
         toast({ title: "Search endpoint not configured", description: "Search endpoint not configured on backend. Use Enrich mode for now.", variant: "destructive" });
         return;
       }
-      const results = Array.isArray(data) ? data : data?.results || data?.candidates || [];
+      const results: SearchResult[] = Array.isArray(data) ? data : data?.results || data?.candidates || [];
       setSearchResults(results);
       if (results.length === 0) {
         toast({ title: "No results", description: "No candidates found for this search." });
+      } else {
+        // Trigger auto-enrich in background
+        autoEnrichProfiles(results);
       }
     } catch (err: any) {
       toast({ title: "Search failed", description: err.message || "Could not reach the search API.", variant: "destructive" });
@@ -224,7 +305,7 @@ export default function SearchTab() {
   const handleSaveFromSearch = async (candidate: SearchResult, idx: number) => {
     if (!user) return;
     setSavingIdx(idx);
-    const enrichData = enrichedIdx === idx ? enrichedResult : null;
+    const enrichData = enrichedIdx === idx ? enrichedResult : candidate.enrichmentData || null;
     const { error } = await supabase.from("candidates").insert({
       name: candidate.name,
       company: candidate.company || "",
@@ -294,7 +375,6 @@ export default function SearchTab() {
   };
 
   const handleFindCandidates = () => {
-    // Auto-populate search fields from research
     if (researchData?.search_criteria?.keywords) {
       setSearchSkills(researchData.search_criteria.keywords.slice(0, 5).join(", "));
     }
@@ -304,6 +384,17 @@ export default function SearchTab() {
     setSearchRole(resJobTitle.trim() || "");
     setMode("search");
   };
+
+  // Filtered results
+  const filteredResults = searchResults.filter((r) => {
+    if (sourceFilter === "all") return true;
+    if (sourceFilter === "enriched") return r.autoEnriched;
+    return r.source === sourceFilter;
+  });
+
+  const linkedInCount = searchResults.filter((r) => r.source === "linkedin").length;
+  const githubCount = searchResults.filter((r) => r.source === "github").length;
+  const enrichedCount = searchResults.filter((r) => r.autoEnriched).length;
 
   const modeDescriptions: Record<Mode, string> = {
     research: "Deep-research a role to find target companies and search criteria",
@@ -655,58 +746,155 @@ export default function SearchTab() {
               )}
             </Button>
           </form>
+
           {searching && (
             <div className="glass-card p-8 flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Searching for candidates...</p>
+              <p className="text-sm text-muted-foreground">Searching LinkedIn and GitHub...</p>
             </div>
           )}
+
           {searchResults.length > 0 && !searching && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""} found</p>
-              {searchResults.map((candidate, idx) => (
-                <div key={idx}>
-                  <div className="glass-card p-4 space-y-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-foreground flex-1">{candidate.name || "Unknown"}</h3>
-                        {candidate.source && (
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            candidate.source === "linkedin" ? "bg-primary/20 text-primary" :
-                            candidate.source === "scholar" ? "bg-blue-500/20 text-blue-400" :
-                            "bg-muted text-muted-foreground"
-                          }`}>
-                            {candidate.source === "linkedin" ? "LinkedIn" :
-                             candidate.source === "github" ? "GitHub" :
-                             candidate.source === "scholar" ? "Scholar" :
-                             candidate.source === "twitter" ? "X/Twitter" : "Web"}
+              {/* Result count + auto-enrich progress */}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {searchResults.length} profile{searchResults.length !== 1 ? "s" : ""} found
+                </p>
+                {autoEnriching && (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                    <span className="text-xs text-primary">
+                      Enriching {autoEnrichDone}/{autoEnrichCount} strong profiles...
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Filter chips */}
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { key: "all" as SourceFilter, label: "All", count: searchResults.length },
+                  { key: "linkedin" as SourceFilter, label: "LinkedIn", count: linkedInCount },
+                  { key: "github" as SourceFilter, label: "GitHub", count: githubCount },
+                  { key: "enriched" as SourceFilter, label: "Auto-enriched", count: enrichedCount },
+                ]).filter((f) => f.count > 0 || f.key === "all").map(({ key, label, count }) => (
+                  <button
+                    key={key}
+                    onClick={() => setSourceFilter(key)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      sourceFilter === key
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground hover:text-foreground border border-border"
+                    }`}
+                  >
+                    {label} {count > 0 && <span className="ml-1 opacity-70">{count}</span>}
+                  </button>
+                ))}
+              </div>
+
+              {/* Result cards */}
+              {filteredResults.map((candidate, filteredIdx) => {
+                const idx = searchResults.indexOf(candidate);
+                return (
+                  <div key={idx}>
+                    <div className="rounded-xl border border-[hsl(var(--border))] bg-[rgba(255,255,255,0.03)] p-4 space-y-3 hover:border-primary/40 transition-colors">
+                      {/* Top row: Avatar + Name + Source badge */}
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
+                        </div>
+
+                        {/* Name + role */}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-bold text-foreground truncate">{candidate.name || "Unknown"}</h3>
+                          {candidate.role && (
+                            <p className="text-xs text-muted-foreground truncate">{candidate.role}</p>
+                          )}
+                          {candidate.company && (
+                            <p className="text-xs text-muted-foreground font-mono">{candidate.company}</p>
+                          )}
+                        </div>
+
+                        {/* Source badge + auto-enriched badge */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {candidate.autoEnriched && (
+                            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
+                              <Zap className="h-2.5 w-2.5" /> Auto-enriched
+                            </span>
+                          )}
+                          <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${getSourceBadgeClasses(candidate.source)}`}>
+                            {getSourceLabel(candidate.source)}
                           </span>
+                        </div>
+                      </div>
+
+                      {/* Bio/summary */}
+                      {candidate.summary && (
+                        <p className="text-xs text-secondary-foreground line-clamp-2 leading-relaxed">
+                          {candidate.summary}
+                        </p>
+                      )}
+
+                      {/* Auto-enrichment data inline */}
+                      {candidate.autoEnriched && candidate.enrichmentData && (
+                        <div className="mt-1">
+                          <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: candidate.enrichmentData }} />
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-xs border-primary/30 text-primary hover:bg-primary/10"
+                          disabled={enrichingIdx === idx}
+                          onClick={() => handleEnrichFromSearch(candidate, idx)}
+                        >
+                          {enrichingIdx === idx ? (
+                            <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Enriching...</>
+                          ) : (
+                            <><Sparkles className="h-3 w-3 mr-1" /> Enrich</>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 text-xs"
+                          disabled={savingIdx === idx || savedIdxs.has(idx)}
+                          onClick={() => handleSaveFromSearch(candidate, idx)}
+                        >
+                          {savedIdxs.has(idx) ? (
+                            <><Check className="h-3 w-3 mr-1" /> Saved</>
+                          ) : savingIdx === idx ? (
+                            <span className="animate-pulse">Saving...</span>
+                          ) : (
+                            <><Save className="h-3 w-3 mr-1" /> Save</>
+                          )}
+                        </Button>
+                        {candidate.url && (
+                          <a
+                            href={candidate.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
                         )}
                       </div>
-                      {candidate.url && (
-                        <a href={candidate.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5">
-                          <ExternalLink className="h-3 w-3" />
-                          <span className="truncate max-w-[250px]">{candidate.url.replace(/^https?:\/\//, "")}</span>
-                        </a>
-                      )}
-                      {candidate.summary && <p className="text-xs text-secondary-foreground mt-2 line-clamp-3">{candidate.summary}</p>}
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="secondary" className="flex-1 text-xs" disabled={enrichingIdx === idx} onClick={() => handleEnrichFromSearch(candidate, idx)}>
-                        {enrichingIdx === idx ? <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Enriching...</> : <><Sparkles className="h-3 w-3 mr-1" /> Enrich</>}
-                      </Button>
-                      <Button size="sm" className="flex-1 text-xs" disabled={savingIdx === idx || savedIdxs.has(idx)} onClick={() => handleSaveFromSearch(candidate, idx)}>
-                        {savedIdxs.has(idx) ? <><Check className="h-3 w-3 mr-1" /> Saved</> : savingIdx === idx ? <span className="animate-pulse">Saving...</span> : <><Save className="h-3 w-3 mr-1" /> Save</>}
-                      </Button>
-                    </div>
+
+                    {/* Manual enrichment result */}
+                    {enrichedIdx === idx && enrichedResult && !candidate.autoEnriched && (
+                      <div className="mt-2">
+                        <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: enrichedResult }} />
+                      </div>
+                    )}
                   </div>
-                  {enrichedIdx === idx && enrichedResult && (
-                    <div className="mt-2">
-                      <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: enrichedResult }} />
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

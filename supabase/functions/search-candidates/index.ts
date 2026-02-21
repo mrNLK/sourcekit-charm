@@ -7,6 +7,84 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function buildLinkedInQuery(role: string, company?: string, location?: string, skills?: string): string {
+  let q = role;
+  if (skills) q += ` ${skills}`;
+  if (company) q += ` at ${company}`;
+  if (location) q += ` ${location}`;
+  return q;
+}
+
+function buildGitHubQuery(role: string, skills?: string): string {
+  let q = role;
+  if (skills) q += ` ${skills}`;
+  return q;
+}
+
+function detectSource(url: string): string {
+  if (url.includes("linkedin.com")) return "linkedin";
+  if (url.includes("github.com")) return "github";
+  if (url.includes("scholar.google.com")) return "scholar";
+  if (url.includes("twitter.com") || url.includes("x.com")) return "twitter";
+  return "other";
+}
+
+function cleanName(title: string, source: string): string {
+  let name = title || "Unknown";
+  if (source === "linkedin") {
+    name = name.replace(/\s*[\-\|–]\s*LinkedIn.*$/i, "").trim();
+    // Remove trailing role descriptions like "- Staff Engineer at Google"
+    name = name.replace(/\s*[\-–]\s+.*$/, "").trim();
+  }
+  if (source === "github") {
+    // GitHub titles are often "username (Full Name)" or "Full Name"
+    name = name.replace(/^GitHub\s*-\s*/i, "").trim();
+    // Remove repo-style titles
+    name = name.replace(/^Search code.*$/i, "").trim() || name;
+  }
+  return name || "Unknown";
+}
+
+interface ExaResult {
+  id?: string;
+  title?: string;
+  url?: string;
+  text?: string;
+  highlights?: string[];
+}
+
+async function searchExa(
+  apiKey: string,
+  query: string,
+  domains: string[],
+  numResults: number,
+  signal: AbortSignal
+): Promise<ExaResult[]> {
+  const response = await fetch("https://api.exa.ai/search", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      type: "neural",
+      numResults,
+      includeDomains: domains,
+      contents: { text: true },
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Exa API error ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.results || [];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,68 +129,34 @@ serve(async (req) => {
       });
     }
 
-    // Build a people-focused query
-    let query = `LinkedIn profile ${role}`;
-    if (company) query += ` at ${company}`;
-    if (location) query += ` ${location}`;
-    if (skills) query += ` ${skills}`;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
-      const response = await fetch("https://api.exa.ai/search", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${exaApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query,
-          type: "neural",
-          numResults: 25,
-          includeDomains: [
-            "linkedin.com/in",
-            "github.com",
-            "scholar.google.com",
-            "twitter.com",
-            "x.com",
-          ],
-          contents: {
-            text: true,
-          },
-        }),
-        signal: controller.signal,
-      });
+      // Run LinkedIn and GitHub searches in parallel
+      const linkedInQuery = buildLinkedInQuery(role, company, location, skills);
+      const githubQuery = buildGitHubQuery(role, skills);
+
+      const [linkedInResults, githubResults] = await Promise.all([
+        searchExa(exaApiKey, linkedInQuery, ["linkedin.com/in"], 20, controller.signal),
+        searchExa(exaApiKey, githubQuery, ["github.com"], 10, controller.signal),
+      ]);
 
       clearTimeout(timeout);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        return new Response(
-          JSON.stringify({ error: `Exa API error: ${response.status}`, details: errorText }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Merge results: LinkedIn first, then GitHub, dedup by URL
+      const seenUrls = new Set<string>();
+      const candidates: any[] = [];
 
-      const data = await response.json();
-
-      // Map Exa results to candidate format with source detection
-      const candidates = (data.results || []).map((r: any) => {
+      const processResult = (r: ExaResult) => {
         const url = r.url || "";
-        let source = "other";
-        if (url.includes("linkedin.com")) source = "linkedin";
-        else if (url.includes("github.com")) source = "github";
-        else if (url.includes("scholar.google.com")) source = "scholar";
-        else if (url.includes("twitter.com") || url.includes("x.com")) source = "twitter";
+        if (!url || seenUrls.has(url)) return;
+        seenUrls.add(url);
 
-        // Clean up name from LinkedIn titles
-        let name = r.title || "Unknown";
-        if (source === "linkedin") {
-          name = name.replace(/\s*[\-\|–]\s*LinkedIn.*$/i, "").trim();
-        }
+        const source = detectSource(url);
+        const name = cleanName(r.title || "", source);
 
-        return {
+        candidates.push({
           name,
           company: "",
           role: "",
@@ -120,8 +164,12 @@ serve(async (req) => {
           url,
           source,
           exa_id: r.id || "",
-        };
-      });
+        });
+      };
+
+      // LinkedIn first for priority
+      for (const r of linkedInResults) processResult(r);
+      for (const r of githubResults) processResult(r);
 
       return new Response(JSON.stringify(candidates), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
