@@ -18,7 +18,7 @@ interface SearchResult {
   role: string;
   summary?: string;
   url?: string;
-  highlights?: string[];
+  source?: string;
 }
 
 interface ResearchData {
@@ -668,25 +668,28 @@ export default function SearchTab() {
                 <div key={idx}>
                   <div className="glass-card p-4 space-y-3">
                     <div>
-                      <h3 className="text-sm font-bold text-foreground">{candidate.name || "Unknown"}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-foreground flex-1">{candidate.name || "Unknown"}</h3>
+                        {candidate.source && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            candidate.source === "linkedin" ? "bg-primary/20 text-primary" :
+                            candidate.source === "scholar" ? "bg-blue-500/20 text-blue-400" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {candidate.source === "linkedin" ? "LinkedIn" :
+                             candidate.source === "github" ? "GitHub" :
+                             candidate.source === "scholar" ? "Scholar" :
+                             candidate.source === "twitter" ? "X/Twitter" : "Web"}
+                          </span>
+                        )}
+                      </div>
                       {candidate.url && (
                         <a href={candidate.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5">
                           <ExternalLink className="h-3 w-3" />
-                          <span className="truncate max-w-[200px]">{candidate.url.replace(/^https?:\/\//, "")}</span>
+                          <span className="truncate max-w-[250px]">{candidate.url.replace(/^https?:\/\//, "")}</span>
                         </a>
                       )}
-                      {candidate.company && <p className="font-mono text-xs text-primary mt-1">{candidate.company}</p>}
-                      {candidate.role && <p className="text-xs text-muted-foreground">{candidate.role}</p>}
-                      {candidate.summary && <p className="text-xs text-secondary-foreground mt-1 line-clamp-3">{candidate.summary}</p>}
-                      {candidate.highlights && candidate.highlights.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {candidate.highlights.slice(0, 2).map((h, i) => (
-                            <p key={i} className="text-xs text-muted-foreground italic border-l-2 border-primary/30 pl-2">
-                              {h.length > 150 ? h.substring(0, 150) + "…" : h}
-                            </p>
-                          ))}
-                        </div>
-                      )}
+                      {candidate.summary && <p className="text-xs text-secondary-foreground mt-2 line-clamp-3">{candidate.summary}</p>}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" disabled={enrichingIdx === idx} onClick={() => handleEnrichFromSearch(candidate, idx)}>
