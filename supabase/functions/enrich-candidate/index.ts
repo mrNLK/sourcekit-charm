@@ -42,42 +42,48 @@ serve(async (req) => {
     const candidateDescription = description || "";
     const candidateLinkedin = linkedin_url || handle || "";
 
-    // Phase 1: Exa web search for real-world context
+    // Phase 1: 3 parallel Exa searches for real-world context
     const exaApiKey = Deno.env.get("EXA_API_KEY");
     let exaContext = "";
 
     if (exaApiKey && candidateName !== "Unknown") {
       try {
-        const searchQuery = candidateLinkedin
-          ? candidateLinkedin
-          : `"${candidateName}" ${candidateCompany} ${candidateTitle}`;
+        const exaSearch = (query: string, numResults: number, maxChars: number) =>
+          fetch("https://api.exa.ai/search", {
+            method: "POST",
+            headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query, type: "auto", numResults,
+              contents: { text: { maxCharacters: maxChars } },
+            }),
+          });
 
-        const exaRes = await fetch("https://api.exa.ai/search", {
-          method: "POST",
-          headers: {
-            "x-api-key": exaApiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: searchQuery,
-            type: "auto",
-            numResults: 5,
-            contents: {
-              text: { maxCharacters: 1000 },
-            },
-          }),
-        });
+        const searches = await Promise.all([
+          exaSearch(candidateLinkedin || `"${candidateName}" ${candidateCompany}`, 3, 1000),
+          exaSearch(`"${candidateName}" (paper OR publication OR arxiv OR conference OR proceedings)`, 3, 800),
+          exaSearch(`"${candidateName}" (github.com OR opensource OR "open source" OR contributor)`, 3, 800),
+        ]);
 
-        if (exaRes.ok) {
-          const exaData = await exaRes.json();
-          const snippets = (exaData.results || [])
-            .map((r: any) => `[${r.title}](${r.url})\n${r.text || ""}`)
-            .join("\n\n");
-          exaContext = snippets ? `\n\nWeb search results about this person:\n${snippets}` : "";
-          console.log(`Exa search returned ${exaData.results?.length || 0} results for "${candidateName}"`);
-        } else {
-          console.warn("Exa search failed:", exaRes.status);
-        }
+        const [profileRes, pubsRes, githubRes] = await Promise.all(
+          searches.map(r => r.ok ? r.json() : { results: [] })
+        );
+
+        const formatResults = (data: any, label: string) => {
+          const results = data.results || [];
+          if (!results.length) return "";
+          return `\n${label}:\n` + results
+            .map((r: any) => `- [${r.title}](${r.url}): ${r.text || ""}`)
+            .join("\n");
+        };
+
+        exaContext = [
+          formatResults(profileRes, "Profile results"),
+          formatResults(pubsRes, "Publications and research"),
+          formatResults(githubRes, "Open source and GitHub"),
+        ].filter(Boolean).join("\n");
+
+        const totalResults = (profileRes.results?.length || 0) + (pubsRes.results?.length || 0) + (githubRes.results?.length || 0);
+        console.log(`Exa 3-search returned ${totalResults} total results for "${candidateName}" (profile: ${profileRes.results?.length || 0}, pubs: ${pubsRes.results?.length || 0}, github: ${githubRes.results?.length || 0})`);
       } catch (exaErr) {
         console.warn("Exa search error:", exaErr);
       }
@@ -92,7 +98,7 @@ serve(async (req) => {
       });
     }
 
-    const systemPrompt = `You are an expert talent researcher. Given information about a candidate, produce a structured enrichment profile. Be factual and concise. Only include information you can reasonably infer from the provided data. Do not fabricate details.`;
+    const systemPrompt = `You are an expert talent researcher. Given information about a candidate, produce a structured enrichment profile. Be factual and concise. Only include information you can reasonably infer from the provided data. Do not fabricate details. When score_signals fields are true, you MUST cite the specific evidence from the web search results. Add a new field evidence as an object with the same keys as score_signals, where each value is a string citing the specific URL or finding that supports the signal. Empty string if no evidence found.`;
 
     const userPrompt = `Analyze this candidate and return structured enrichment data.
 
@@ -168,8 +174,22 @@ Return the enrichment using the provided tool.`;
                     required: ["has_phd", "top_company", "has_publications", "open_source", "conference_speaker", "has_patents", "leadership_role", "top_university"],
                     additionalProperties: false,
                   },
+                  evidence: {
+                    type: "object",
+                    description: "For each score_signal that is true, cite the specific URL or finding. Empty string if no evidence.",
+                    properties: {
+                      has_phd: { type: "string" },
+                      top_company: { type: "string" },
+                      has_publications: { type: "string" },
+                      open_source: { type: "string" },
+                      conference_speaker: { type: "string" },
+                      has_patents: { type: "string" },
+                      leadership_role: { type: "string" },
+                      top_university: { type: "string" },
+                    },
+                  },
                 },
-                required: ["summary", "key_achievements", "skills", "experience_years", "education", "publications", "score_signals"],
+                required: ["summary", "key_achievements", "skills", "experience_years", "education", "publications", "score_signals", "evidence"],
                 additionalProperties: false,
               },
             },
