@@ -347,6 +347,12 @@ export default function SearchTab() {
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
+  // Batch enrich state
+  const [batchEnriching, setBatchEnriching] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const batchCancelRef = useRef(false);
+
   // Research state
   const [researchInput, setResearchInput] = useState<ResearchInput>("quick");
   const [resJobTitle, setResJobTitle] = useState("");
@@ -359,10 +365,17 @@ export default function SearchTab() {
   const [researchSaved, setResearchSaved] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["companies", "eea", "criteria"]));
 
+  // Suggested searches from research
+  const [suggestedSearches, setSuggestedSearches] = useState<string[]>([]);
+
   // Search history state
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+
+  // Settings defaults
+  const [settingsRole, setSettingsRole] = useState("");
+  const [settingsCompany, setSettingsCompany] = useState("");
 
   // Duplicate detection state
   const [duplicateModal, setDuplicateModal] = useState<{
@@ -374,13 +387,29 @@ export default function SearchTab() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Cleanup polling on unmount + load search history
+  // Cleanup polling on unmount + load search history + load settings
   useEffect(() => {
     loadSearchHistory();
+    loadSettings();
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
+
+  const loadSettings = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("settings")
+      .select("key, value")
+      .eq("user_id", user.id)
+      .in("key", ["target_role", "target_company"]);
+    if (data) {
+      for (const s of data as any[]) {
+        if (s.key === "target_role" && s.value) setSettingsRole(s.value);
+        if (s.key === "target_company" && s.value) setSettingsCompany(s.value);
+      }
+    }
+  };
 
   const loadSearchHistory = async () => {
     setLoadingHistory(true);
@@ -606,6 +635,52 @@ export default function SearchTab() {
     }
   };
 
+  // ---- Batch enrich ----
+  const handleBatchEnrich = async () => {
+    const unenriched = searchResults
+      .map((r, i) => ({ result: r, idx: i }))
+      .filter(({ result, idx }) => !result.enrichmentData && enrichedIdx !== idx);
+    if (unenriched.length === 0) {
+      toast({ title: "All candidates already enriched" });
+      return;
+    }
+    setBatchEnriching(true);
+    setBatchTotal(unenriched.length);
+    setBatchProgress(0);
+    batchCancelRef.current = false;
+
+    for (const { result: candidate, idx } of unenriched) {
+      if (batchCancelRef.current) break;
+      setBatchProgress((p) => p + 1);
+      try {
+        const { data, error } = await supabase.functions.invoke("enrich-candidate", {
+          body: {
+            name: candidate.name,
+            title: candidate.role || "",
+            company: candidate.company,
+            linkedin_url: candidate.url?.includes("linkedin.com") ? candidate.url : "",
+            description: candidate.description || "",
+          },
+        });
+        if (!error && data) {
+          setSearchResults((prev) =>
+            prev.map((r, i) => i === idx ? { ...r, enrichmentData: data, autoEnriched: true } : r)
+          );
+        }
+      } catch (err: any) {
+        console.error(`Batch enrich failed for ${candidate.name}:`, err);
+      }
+      if (!batchCancelRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+    setBatchEnriching(false);
+  };
+
+  const handleStopBatchEnrich = () => {
+    batchCancelRef.current = true;
+  };
+
   const handleSaveFromSearch = async (candidate: SearchResult, idx: number, force = false) => {
     if (!user) return;
 
@@ -677,7 +752,16 @@ export default function SearchTab() {
         setResearchRunId(null);
         setResearchProgress("");
         setResearchRaw(data);
-        setResearchData(parseResearchOutput(data));
+        const parsed = parseResearchOutput(data);
+        setResearchData(parsed);
+        // Build suggested searches from target companies
+        if (parsed.target_companies?.length) {
+          const jobTitle = resJobTitle.trim() || "Engineer";
+          const suggestions = parsed.target_companies
+            .slice(0, 5)
+            .map((c) => `${jobTitle} at ${c.name}`);
+          setSuggestedSearches(suggestions);
+        }
         return;
       }
 
@@ -855,12 +939,18 @@ export default function SearchTab() {
             {researchInput === "quick" ? (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="resJobTitle" className="text-xs">Job Title *</Label>
-                  <Input id="resJobTitle" value={resJobTitle} onChange={(e) => setResJobTitle(e.target.value)} placeholder="ML Engineer" required className="bg-secondary border-border" />
+                  <Label htmlFor="resJobTitle" className="text-xs">
+                    Job Title *
+                    {!resJobTitle && settingsRole && <span className="text-primary/60 ml-1">(from Settings)</span>}
+                  </Label>
+                  <Input id="resJobTitle" value={resJobTitle} onChange={(e) => setResJobTitle(e.target.value)} placeholder={settingsRole || "ML Engineer"} required className="bg-secondary border-border" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="resCompanyName" className="text-xs">Company Name *</Label>
-                  <Input id="resCompanyName" value={resCompanyName} onChange={(e) => setResCompanyName(e.target.value)} placeholder="Anthropic" required className="bg-secondary border-border" />
+                  <Label htmlFor="resCompanyName" className="text-xs">
+                    Company Name *
+                    {!resCompanyName && settingsCompany && <span className="text-primary/60 ml-1">(from Settings)</span>}
+                  </Label>
+                  <Input id="resCompanyName" value={resCompanyName} onChange={(e) => setResCompanyName(e.target.value)} placeholder={settingsCompany || "Anthropic"} required className="bg-secondary border-border" />
                 </div>
               </div>
             ) : (
@@ -1008,6 +1098,37 @@ export default function SearchTab() {
                 </div>
               )}
 
+              {/* Suggested Searches from Research */}
+              {suggestedSearches.length > 0 && (
+                <div className="glass-card p-4 space-y-3">
+                  <p className="text-xs font-semibold text-foreground">Suggested Searches</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestedSearches.map((q, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const parts = q.match(/^(.+?)\s+at\s+(.+)$/);
+                          if (parts) {
+                            setSearchRole(parts[1]);
+                            setSearchCompany(parts[2]);
+                          } else {
+                            setSearchRole(q);
+                          }
+                          setMode("search");
+                          setTimeout(() => {
+                            const form = document.getElementById("search-form") as HTMLFormElement;
+                            if (form) form.requestSubmit();
+                          }, 100);
+                        }}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button className="flex-1 glow-accent" onClick={handleFindCandidates}>
                   <ArrowRight className="h-4 w-4 mr-2" /> Find Candidates
@@ -1082,8 +1203,11 @@ export default function SearchTab() {
         <>
           <form id="search-form" onSubmit={handleSearch} className="glass-card p-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="searchRole" className="text-xs">Role / Title *</Label>
-              <Input id="searchRole" value={searchRole} onChange={(e) => setSearchRole(e.target.value)} placeholder="Staff Engineer, Product Manager..." required className="bg-secondary border-border" />
+              <Label htmlFor="searchRole" className="text-xs">
+                Role / Title *
+                {!searchRole && settingsRole && <span className="text-primary/60 ml-1">(from Settings)</span>}
+              </Label>
+              <Input id="searchRole" value={searchRole} onChange={(e) => setSearchRole(e.target.value)} placeholder={settingsRole || "Staff Engineer, Product Manager..."} required className="bg-secondary border-border" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -1148,17 +1272,31 @@ export default function SearchTab() {
 
           {searchResults.length > 0 && searchStatus === "done" && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-foreground">
                   Found {searchResults.length} candidate{searchResults.length !== 1 ? "s" : ""}
                 </p>
-                <button
-                  onClick={() => setViewMode(viewMode === "expanded" ? "compact" : "expanded")}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {viewMode === "expanded" ? <LayoutList className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
-                  {viewMode === "expanded" ? "Compact" : "Expanded"}
-                </button>
+                <div className="flex items-center gap-2">
+                  {batchEnriching ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Enriching {batchProgress} of {batchTotal}...</span>
+                      <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={handleStopBatchEnrich}>
+                        Stop
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={handleBatchEnrich}>
+                      <Sparkles className="h-3 w-3" /> Enrich All
+                    </Button>
+                  )}
+                  <button
+                    onClick={() => setViewMode(viewMode === "expanded" ? "compact" : "expanded")}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {viewMode === "expanded" ? <LayoutList className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+                    {viewMode === "expanded" ? "Compact" : "Expanded"}
+                  </button>
+                </div>
               </div>
 
               {/* Filter chips */}
@@ -1182,6 +1320,16 @@ export default function SearchTab() {
                   </button>
                 ))}
               </div>
+
+              {/* Batch enrich progress bar */}
+              {batchEnriching && (
+                <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-300"
+                    style={{ width: `${batchTotal > 0 ? (batchProgress / batchTotal) * 100 : 0}%` }}
+                  />
+                </div>
+              )}
 
               {/* Result cards */}
               {filteredResults.map((candidate, filteredIdx) => {
