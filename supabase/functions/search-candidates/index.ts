@@ -7,42 +7,156 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function buildLinkedInQuery(role: string, company?: string, location?: string, skills?: string): string {
-  let q = role;
-  if (skills) q += ` ${skills}`;
-  if (company) q += ` at ${company}`;
-  if (location) q += ` ${location}`;
-  return q;
+// GitHub noise paths to filter out
+const GITHUB_NOISE = [
+  "/search", "/topics", "/collections", "/orgs", "/repos",
+  "/issues", "/pulls", "/explore", "/features", "/marketplace",
+  "/settings", "/trending", "/events", "/sponsors", "/login",
+  "/signup", "/pricing", "/enterprise", "/about", "/readme",
+];
+
+const BOILERPLATE_PATTERNS = [
+  /skip to content/i,
+  /toggle navigation/i,
+  /search or jump to/i,
+  /sign in/i,
+  /join now/i,
+  /navigation menu/i,
+  /appearance settings/i,
+  /\[sign in\]/i,
+  /search code, repositories/i,
+  /search clear/i,
+  /search syntax tips/i,
+  /you signed in with another tab/i,
+  /reload to refresh your session/i,
+];
+
+function isValidGitHubProfile(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== "github.com") return false;
+    const path = u.pathname.replace(/^\//, "").replace(/\/$/, "");
+    if (!path) return false;
+    const segments = path.split("/");
+    // Filter known noise paths (first segment is a noise keyword)
+    if (GITHUB_NOISE.some((noise) => `/${segments[0]}` === noise)) return false;
+    // Allow user profiles (1 segment) and user repos (2 segments)
+    if (segments.length > 2) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function buildGitHubQuery(role: string, skills?: string): string {
-  let q = role;
-  if (skills) q += ` ${skills}`;
-  return q;
+function isValidLinkedInProfile(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname.includes("linkedin.com") && u.pathname.startsWith("/in/");
+  } catch {
+    return false;
+  }
+}
+
+function extractNameFromLinkedInUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const slug = u.pathname.replace("/in/", "").replace(/\/$/, "");
+    // Remove trailing hash codes like "john-doe-123abc" -> "john-doe"
+    const cleaned = slug.replace(/-[a-f0-9]{6,}$/i, "").replace(/-\d+[a-z]*$/i, "");
+    return cleaned
+      .split("-")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  } catch {
+    return "Unknown";
+  }
+}
+
+function extractNameFromGitHub(title: string, url: string): string {
+  // Try to get a name from the title
+  let name = (title || "").trim();
+  // Strip common prefixes/suffixes
+  name = name.replace(/^GitHub\s*[-–:]\s*/i, "");
+  name = name.replace(/\s*[-–:]\s*GitHub$/i, "");
+  name = name.replace(/^Search code.*$/i, "");
+
+  if (name && name.length > 1 && !name.toLowerCase().startsWith("search")) {
+    return name;
+  }
+
+  // Fallback: extract username from URL (first path segment)
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.replace(/^\//, "").replace(/\/$/, "").split("/");
+    return segments[0] || "Unknown";
+  } catch {
+    return "Unknown";
+  }
+}
+
+function cleanSnippet(text: string | undefined, source: string): string {
+  if (!text) return "View profile for details";
+
+  let cleaned = text.trim();
+
+  // Check for boilerplate
+  const hasBoilerplate = BOILERPLATE_PATTERNS.some((p) => p.test(cleaned));
+  if (hasBoilerplate) {
+    // Try to extract meaningful content after boilerplate
+    // Split on common separators and find first non-boilerplate segment
+    const segments = cleaned.split(/(?:##|#|\n\n|\n)/).filter(Boolean);
+    const meaningful = segments.find(
+      (s) => s.trim().length > 20 && !BOILERPLATE_PATTERNS.some((p) => p.test(s))
+    );
+    cleaned = meaningful?.trim() || "View profile for details";
+  }
+
+  // For LinkedIn, extract the headline (usually first line)
+  if (source === "linkedin" && cleaned.length > 5) {
+    const lines = cleaned.split(/\n/).filter((l) => l.trim().length > 3);
+    const headline = lines.find(
+      (l) => !l.match(/sign in|join now|linkedin/i) && l.trim().length > 5
+    );
+    if (headline) cleaned = headline.trim();
+  }
+
+  // Truncate to 120 chars
+  if (cleaned.length > 120) {
+    cleaned = cleaned.substring(0, 120).replace(/\s+\S*$/, "") + "...";
+  }
+
+  return cleaned || "View profile for details";
 }
 
 function detectSource(url: string): string {
   if (url.includes("linkedin.com")) return "linkedin";
   if (url.includes("github.com")) return "github";
-  if (url.includes("scholar.google.com")) return "scholar";
-  if (url.includes("twitter.com") || url.includes("x.com")) return "twitter";
   return "other";
 }
 
-function cleanName(title: string, source: string): string {
-  let name = title || "Unknown";
-  if (source === "linkedin") {
-    name = name.replace(/\s*[\-\|–]\s*LinkedIn.*$/i, "").trim();
-    // Remove trailing role descriptions like "- Staff Engineer at Google"
-    name = name.replace(/\s*[\-–]\s+.*$/, "").trim();
+// Extract tags from GitHub profile text
+function extractGitHubTags(text: string): string[] {
+  const tags: string[] = [];
+  const starsMatch = text.match(/(\d+)\s*stars?/i);
+  if (starsMatch) tags.push(`${starsMatch[1]} stars`);
+  const followersMatch = text.match(/(\d+)\s*followers?/i);
+  if (followersMatch) tags.push(`${followersMatch[1]} followers`);
+  const reposMatch = text.match(/(\d+)\s*repositor/i);
+  if (reposMatch) tags.push(`${reposMatch[1]} repos`);
+  // Language tags
+  const langs = ["Python", "JavaScript", "TypeScript", "Rust", "Go", "Java", "C++", "Julia", "R"];
+  for (const lang of langs) {
+    if (text.includes(lang)) tags.push(lang);
   }
-  if (source === "github") {
-    // GitHub titles are often "username (Full Name)" or "Full Name"
-    name = name.replace(/^GitHub\s*-\s*/i, "").trim();
-    // Remove repo-style titles
-    name = name.replace(/^Search code.*$/i, "").trim() || name;
-  }
-  return name || "Unknown";
+  return tags.slice(0, 5);
+}
+
+// Determine confidence: green for clean profile URL, yellow for uncertain
+function getConfidence(url: string, source: string): "high" | "medium" | "low" {
+  if (source === "linkedin" && isValidLinkedInProfile(url)) return "high";
+  if (source === "github" && isValidGitHubProfile(url)) return "high";
+  return "medium";
 }
 
 interface ExaResult {
@@ -50,7 +164,6 @@ interface ExaResult {
   title?: string;
   url?: string;
   text?: string;
-  highlights?: string[];
 }
 
 async function searchExa(
@@ -133,43 +246,90 @@ serve(async (req) => {
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
-      // Run LinkedIn and GitHub searches in parallel
-      const linkedInQuery = buildLinkedInQuery(role, company, location, skills);
-      const githubQuery = buildGitHubQuery(role, skills);
+      // Build queries - target people profiles specifically
+      let linkedInQuery = `${role} profile`;
+      if (skills) linkedInQuery += ` ${skills}`;
+      if (company) linkedInQuery += ` at ${company}`;
+      if (location) linkedInQuery += ` ${location}`;
 
+      // GitHub query: search for people, not repos
+      let githubQuery = `${role} portfolio personal profile`;
+      if (skills) githubQuery += ` ${skills}`;
+
+      // Run both searches in parallel
+      // Use linkedin.com for broader results, then filter to /in/ profiles
       const [linkedInResults, githubResults] = await Promise.all([
-        searchExa(exaApiKey, linkedInQuery, ["linkedin.com/in"], 20, controller.signal),
-        searchExa(exaApiKey, githubQuery, ["github.com"], 10, controller.signal),
+        searchExa(exaApiKey, linkedInQuery, ["linkedin.com"], 20, controller.signal),
+        searchExa(exaApiKey, githubQuery, ["github.com"], 15, controller.signal),
       ]);
 
       clearTimeout(timeout);
 
-      // Merge results: LinkedIn first, then GitHub, dedup by URL
+      console.log(`LinkedIn results: ${linkedInResults.length}, GitHub results: ${githubResults.length}`);
+      console.log("LinkedIn URLs:", linkedInResults.map(r => r.url).join(", "));
+      console.log("GitHub URLs:", githubResults.map(r => r.url).join(", "));
+
+      // Process and filter results
       const seenUrls = new Set<string>();
       const candidates: any[] = [];
 
-      const processResult = (r: ExaResult) => {
+      // Process LinkedIn results
+      for (const r of linkedInResults) {
         const url = r.url || "";
-        if (!url || seenUrls.has(url)) return;
+        if (!url || seenUrls.has(url)) continue;
+        if (!isValidLinkedInProfile(url)) continue;
         seenUrls.add(url);
 
-        const source = detectSource(url);
-        const name = cleanName(r.title || "", source);
+        const source = "linkedin";
+        const name = extractNameFromLinkedInUrl(url);
+        const snippet = cleanSnippet(r.text, source);
+        const confidence = getConfidence(url, source);
+
+        // Extract headline from LinkedIn text
+        let headline = "";
+        if (r.text) {
+          const lines = r.text.split(/\n/).filter((l) => l.trim().length > 5 && !l.match(/sign in|join|linkedin/i));
+          headline = lines[0]?.trim().substring(0, 80) || "";
+        }
+
+        candidates.push({
+          name,
+          company: "",
+          role: headline,
+          summary: snippet,
+          url,
+          source,
+          confidence,
+          tags: [],
+          exa_id: r.id || "",
+        });
+      }
+
+      // Process GitHub results - filter to actual user profiles
+      for (const r of githubResults) {
+        const url = r.url || "";
+        if (!url || seenUrls.has(url)) continue;
+        if (!isValidGitHubProfile(url)) continue;
+        seenUrls.add(url);
+
+        const source = "github";
+        const name = extractNameFromGitHub(r.title || "", url);
+        const snippet = cleanSnippet(r.text, source);
+        const confidence = getConfidence(url, source);
+        const tags = extractGitHubTags(r.text || "");
 
         candidates.push({
           name,
           company: "",
           role: "",
-          summary: r.text ? r.text.substring(0, 300) : "",
+          summary: snippet,
           url,
           source,
+          confidence,
+          tags,
           exa_id: r.id || "",
         });
-      };
-
-      // LinkedIn first for priority
-      for (const r of linkedInResults) processResult(r);
-      for (const r of githubResults) processResult(r);
+      }
 
       return new Response(JSON.stringify(candidates), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
