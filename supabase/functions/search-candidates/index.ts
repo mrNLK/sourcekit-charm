@@ -165,12 +165,40 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         websetStatus: statusData.status || "unknown",
-        items: items.map((item: any) => ({
-          id: item.id,
-          url: item.url || "",
-          name: item.properties?.name || "",
-          description: item.properties?.description || "",
-        })),
+        items: items.map((item: any) => {
+          const desc = item.properties?.description || item.description || "";
+
+          // Extract name from description patterns like "Name is a ..." or "Name -"
+          let name = item.properties?.name || item.name || "";
+          if (!name && desc) {
+            // Try "Name is a Title" pattern
+            const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
+            if (isMatch) {
+              name = isMatch[1].trim();
+            } else {
+              const firstLine = desc.split("\n")[0].trim();
+              if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
+                name = firstLine.replace(/[-|:;].*$/, "").trim();
+              }
+            }
+          }
+
+          // Extract URL from description if item.url is empty
+          let url = item.url || "";
+          if (!url && desc) {
+            const linkedinMatch = desc.match(/linkedin\.com\/in\/[a-zA-Z0-9-]+/);
+            if (linkedinMatch) url = "https://" + linkedinMatch[0];
+          }
+
+          return {
+            id: item.id || crypto.randomUUID(),
+            url,
+            name,
+            description: desc,
+            highlights: item.highlights || [],
+            source: item.sourceUrl || url || "",
+          };
+        }),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
