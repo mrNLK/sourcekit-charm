@@ -131,8 +131,9 @@ function avatarHue(name: string): number {
   return nameHash(name) % 360;
 }
 
-function detectSource(url: string): string {
+function detectSource(url: string, description?: string): string {
   if (url.includes("linkedin.com")) return "linkedin";
+  if (!url && description && /linkedin\.com|LinkedIn/i.test(description)) return "linkedin";
   if (url.includes("github.com")) return "github";
   if (url.includes("twitter.com") || url.includes("x.com")) return "X";
   return "web";
@@ -177,6 +178,20 @@ function extractNameFromUrl(url: string): string | null {
   return null;
 }
 
+function parseNameFromDescription(desc: string): string {
+  if (!desc) return "";
+  // "Name is a Title at Company"
+  const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
+  if (isMatch) return isMatch[1].trim();
+  // "Name - Title"
+  const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–]/);
+  if (dashMatch) return dashMatch[1].trim();
+  // "Name, Title"
+  const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
+  if (commaMatch) return commaMatch[1].trim();
+  return "";
+}
+
 function parseMetadata(description: string): { title: string; company: string; location: string; headline: string } {
   let title = "";
   let company = "";
@@ -185,11 +200,20 @@ function parseMetadata(description: string): { title: string; company: string; l
 
   if (!description) return { title, company, location, headline };
 
+  // Try "[Name] is a [Title] at [Company]" pattern
+  const isAtMatch = description.match(/is\s+(?:a |an )?(.+?)\s+at\s+([^.,:;]+)/i);
+  if (isAtMatch) {
+    title = isAtMatch[1].trim();
+    company = isAtMatch[2].trim();
+  }
+
   // Try "Title at Company" pattern
-  const atMatch = description.match(/^([^.,:]+?)\s+at\s+([^.,:]+)/i);
-  if (atMatch) {
-    title = atMatch[1].trim();
-    company = atMatch[2].trim();
+  if (!title) {
+    const atMatch = description.match(/^([^.,:]+?)\s+at\s+([^.,:]+)/i);
+    if (atMatch) {
+      title = atMatch[1].trim();
+      company = atMatch[2].trim();
+    }
   }
 
   // Try "Title, Company" pattern
@@ -211,7 +235,7 @@ function parseMetadata(description: string): { title: string; company: string; l
   }
 
   // Location patterns
-  const locMatch = description.match(/(?:based in|located in|from)\s+([^.,:]+)/i);
+  const locMatch = description.match(/(?:based in|located in|from)\s+([^.,:;]+)/i);
   if (locMatch) location = locMatch[1].trim();
 
   // First line as headline
@@ -442,7 +466,7 @@ export default function SearchTab() {
         const results: SearchResult[] = items.map((item: any) => {
           const url = item.url || "";
           const desc = item.description || "";
-          const rawName = item.name || extractNameFromUrl(url) || "Unknown";
+          const rawName = item.name || parseNameFromDescription(desc) || extractNameFromUrl(url) || "";
           const meta = parseMetadata(desc);
           const signals = extractSignals(desc);
           return {
@@ -450,7 +474,7 @@ export default function SearchTab() {
             name: rawName,
             url,
             description: desc,
-            source: detectSource(url),
+            source: detectSource(url, desc),
             company: meta.company,
             role: meta.title,
             location: meta.location,
@@ -1145,7 +1169,14 @@ export default function SearchTab() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-base font-bold text-foreground truncate">{candidate.name}</h3>
+                          {candidate.name ? (
+                            <h3 className="text-base font-bold text-foreground truncate">{candidate.name}</h3>
+                          ) : (
+                            <h3 className="text-base font-medium text-muted-foreground truncate">Unknown Candidate</h3>
+                          )}
+                          {!candidate.name && candidate.description && (
+                            <p className="text-xs text-muted-foreground/70 truncate">{candidate.description.substring(0, 50)}...</p>
+                          )}
                           {titleLine && (
                             <p className="text-xs text-muted-foreground truncate">{titleLine}</p>
                           )}
