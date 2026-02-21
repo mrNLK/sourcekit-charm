@@ -2,3 +2,6 @@ project_id = "murwitqzfrqedimlonao"
 
 [functions.research-role]
 verify_jwt = false
+
+[functions.search-candidates]
+verify_jwt = false
