@@ -1,29 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, Zap } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
 
 type Mode = "research" | "search" | "enrich";
 type ResearchInput = "quick" | "full";
-type SourceFilter = "all" | "linkedin" | "github" | "enriched";
+type SearchStatus = "idle" | "creating" | "polling" | "done" | "error";
 
 interface SearchResult {
+  id: string;
   name: string;
+  url: string;
+  description: string;
+  source: string;
   company: string;
   role: string;
-  summary?: string;
-  url?: string;
-  source?: string;
-  confidence?: "high" | "medium" | "low";
-  tags?: string[];
-  autoEnriched?: boolean;
   enrichmentData?: any;
+  autoEnriched?: boolean;
 }
 
 interface ResearchData {
@@ -82,36 +81,28 @@ function getInitials(name: string): string {
     .join("");
 }
 
-function getSourceLabel(source?: string): string {
+function detectSource(url: string): string {
+  if (url.includes("linkedin.com")) return "linkedin";
+  if (url.includes("github.com")) return "github";
+  if (url.includes("twitter.com") || url.includes("x.com")) return "X";
+  return "web";
+}
+
+function getSourceLabel(source: string): string {
   switch (source) {
     case "linkedin": return "LinkedIn";
     case "github": return "GitHub";
-    case "scholar": return "Scholar";
-    case "twitter": return "X";
+    case "X": return "X";
     default: return "Web";
   }
 }
 
-function getSourceBadgeClasses(source?: string): string {
+function getSourceBadgeClasses(source: string): string {
   switch (source) {
     case "linkedin": return "bg-primary/20 text-primary";
     case "github": return "bg-muted text-muted-foreground";
-    case "scholar": return "bg-blue-500/20 text-blue-400";
     default: return "bg-muted text-muted-foreground";
   }
-}
-
-function isStrongGitHubProfile(summary?: string): boolean {
-  if (!summary) return false;
-  const text = summary.toLowerCase();
-  // Heuristic: look for signals of a strong profile
-  const starMatch = text.match(/stars?[:\s]*(\d+)/i);
-  if (starMatch && parseInt(starMatch[1]) > 100) return true;
-  const followerMatch = text.match(/followers?[:\s]*(\d+)/i);
-  if (followerMatch && parseInt(followerMatch[1]) > 500) return true;
-  // Also check for keywords suggesting active/notable profiles
-  if (text.includes("contributions") && text.includes("repositories")) return true;
-  return false;
 }
 
 export default function SearchTab() {
@@ -132,17 +123,17 @@ export default function SearchTab() {
   const [searchCompany, setSearchCompany] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
   const [searchSkills, setSearchSkills] = useState("");
-  const [searching, setSearching] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [websetId, setWebsetId] = useState<string | null>(null);
   const [enrichingIdx, setEnrichingIdx] = useState<number | null>(null);
   const [enrichedResult, setEnrichedResult] = useState<any>(null);
   const [enrichedIdx, setEnrichedIdx] = useState<number | null>(null);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [savedIdxs, setSavedIdxs] = useState<Set<number>>(new Set());
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [autoEnrichCount, setAutoEnrichCount] = useState(0);
-  const [autoEnrichDone, setAutoEnrichDone] = useState(0);
-  const [autoEnriching, setAutoEnriching] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartRef = useRef<number>(0);
 
   // Research state
   const [researchInput, setResearchInput] = useState<ResearchInput>("quick");
@@ -159,6 +150,13 @@ export default function SearchTab() {
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
@@ -167,39 +165,6 @@ export default function SearchTab() {
       return next;
     });
   };
-
-  // Auto-enrich strong GitHub profiles
-  const autoEnrichProfiles = useCallback(async (results: SearchResult[]) => {
-    const githubTargets = results
-      .map((r, i) => ({ ...r, originalIdx: i }))
-      .filter((r) => r.source === "github" && isStrongGitHubProfile(r.summary));
-
-    if (githubTargets.length === 0) return;
-
-    setAutoEnriching(true);
-    setAutoEnrichCount(githubTargets.length);
-    setAutoEnrichDone(0);
-
-    for (const target of githubTargets) {
-      try {
-        const { data, error } = await supabase.functions.invoke("enrich-candidate", {
-          body: { name: target.name, company: target.company, role: target.role || "", handle: "" },
-        });
-        if (!error && data) {
-          setSearchResults((prev) =>
-            prev.map((r, i) =>
-              i === target.originalIdx ? { ...r, autoEnriched: true, enrichmentData: data } : r
-            )
-          );
-        }
-      } catch {
-        // Skip failed auto-enrichments silently
-      }
-      setAutoEnrichDone((prev) => prev + 1);
-    }
-
-    setAutoEnriching(false);
-  }, []);
 
   // ---- Enrich mode ----
   const handleEnrich = async (e: React.FormEvent) => {
@@ -240,49 +205,92 @@ export default function SearchTab() {
     }
   };
 
-  // ---- Search mode ----
+  // ---- Search mode (Websets) ----
+  const pollWebset = useCallback(async (wsId: string) => {
+    const elapsed = Date.now() - pollStartRef.current;
+    if (elapsed > 120000) {
+      setSearchStatus("error");
+      toast({ title: "Search timed out", description: "The search took too long. Try a more specific query.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke("search-candidates", {
+        body: { action: "poll-webset", websetId: wsId },
+      });
+
+      if (error) throw error;
+
+      const items = data?.items || [];
+      const websetStatus = data?.websetStatus || "unknown";
+
+      if (items.length > 0) {
+        const results: SearchResult[] = items.map((item: any) => ({
+          id: item.id || crypto.randomUUID(),
+          name: item.name || "Unknown",
+          url: item.url || "",
+          description: item.description || "",
+          source: detectSource(item.url || ""),
+          company: "",
+          role: "",
+        }));
+        setSearchResults(results);
+        setSearchStatus("done");
+        return;
+      }
+
+      // If webset is complete but no items, show empty
+      if (websetStatus === "completed" || websetStatus === "idle") {
+        setSearchResults([]);
+        setSearchStatus("done");
+        toast({ title: "No results", description: "No candidates found. Try different criteria." });
+        return;
+      }
+
+      // Keep polling
+      pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
+    } catch (err: any) {
+      console.error("Poll error:", err);
+      // Retry on transient errors
+      pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
+    }
+  }, [toast]);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchRole.trim()) return;
-    setSearching(true);
+
+    setSearchStatus("creating");
     setSearchResults([]);
     setEnrichedResult(null);
     setEnrichedIdx(null);
     setSourceFilter("all");
-    setAutoEnrichCount(0);
-    setAutoEnrichDone(0);
+    setWebsetId(null);
+
     try {
       const { data, error } = await supabase.functions.invoke("search-candidates", {
         body: {
+          action: "create-webset",
           role: searchRole.trim(),
           company: searchCompany.trim(),
           location: searchLocation.trim(),
           skills: searchSkills.trim(),
         },
       });
-      if (error) {
-        if (error.message?.includes("search_not_configured") || error.message?.includes("FunctionsHttpError")) {
-          toast({ title: "Search endpoint not configured", description: "Search endpoint not configured on backend. Use Enrich mode for now.", variant: "destructive" });
-          return;
-        }
-        throw error;
-      }
-      if (data?.error === "search_not_configured") {
-        toast({ title: "Search endpoint not configured", description: "Search endpoint not configured on backend. Use Enrich mode for now.", variant: "destructive" });
-        return;
-      }
-      const results: SearchResult[] = Array.isArray(data) ? data : data?.results || data?.candidates || [];
-      setSearchResults(results);
-      if (results.length === 0) {
-        toast({ title: "No results", description: "No candidates found for this search." });
-      } else {
-        // Trigger auto-enrich in background
-        autoEnrichProfiles(results);
-      }
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const wsId = data?.websetId;
+      if (!wsId) throw new Error("No webset ID returned");
+
+      setWebsetId(wsId);
+      setSearchStatus("polling");
+      pollStartRef.current = Date.now();
+      pollTimerRef.current = setTimeout(() => pollWebset(wsId), 3000);
     } catch (err: any) {
-      toast({ title: "Search failed", description: err.message || "Could not reach the search API.", variant: "destructive" });
-    } finally {
-      setSearching(false);
+      setSearchStatus("error");
+      toast({ title: "Search failed", description: err.message || "Could not initiate search.", variant: "destructive" });
     }
   };
 
@@ -390,13 +398,14 @@ export default function SearchTab() {
   // Filtered results
   const filteredResults = searchResults.filter((r) => {
     if (sourceFilter === "all") return true;
-    if (sourceFilter === "enriched") return r.autoEnriched;
     return r.source === sourceFilter;
   });
 
   const linkedInCount = searchResults.filter((r) => r.source === "linkedin").length;
   const githubCount = searchResults.filter((r) => r.source === "github").length;
-  const enrichedCount = searchResults.filter((r) => r.autoEnriched).length;
+  const webCount = searchResults.filter((r) => r.source !== "linkedin" && r.source !== "github").length;
+
+  const isSearching = searchStatus === "creating" || searchStatus === "polling";
 
   const modeDescriptions: Record<Mode, string> = {
     research: "Deep-research a role to find target companies and search criteria",
@@ -465,51 +474,20 @@ export default function SearchTab() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="resJobTitle" className="text-xs">Job Title *</Label>
-                  <Input
-                    id="resJobTitle"
-                    value={resJobTitle}
-                    onChange={(e) => setResJobTitle(e.target.value)}
-                    placeholder="ML Engineer"
-                    required
-                    className="bg-secondary border-border"
-                  />
+                  <Input id="resJobTitle" value={resJobTitle} onChange={(e) => setResJobTitle(e.target.value)} placeholder="ML Engineer" required className="bg-secondary border-border" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="resCompanyName" className="text-xs">Company Name *</Label>
-                  <Input
-                    id="resCompanyName"
-                    value={resCompanyName}
-                    onChange={(e) => setResCompanyName(e.target.value)}
-                    placeholder="Anthropic"
-                    required
-                    className="bg-secondary border-border"
-                  />
+                  <Input id="resCompanyName" value={resCompanyName} onChange={(e) => setResCompanyName(e.target.value)} placeholder="Anthropic" required className="bg-secondary border-border" />
                 </div>
               </div>
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="resJobSpec" className="text-xs">Full Job Description *</Label>
-                <Textarea
-                  id="resJobSpec"
-                  value={resJobSpec}
-                  onChange={(e) => setResJobSpec(e.target.value)}
-                  placeholder="Paste the full job description here..."
-                  required
-                  rows={8}
-                  className="bg-secondary border-border text-sm"
-                />
+                <Textarea id="resJobSpec" value={resJobSpec} onChange={(e) => setResJobSpec(e.target.value)} placeholder="Paste the full job description here..." required rows={8} className="bg-secondary border-border text-sm" />
               </div>
             )}
-            <Button
-              type="submit"
-              className="w-full glow-accent"
-              size="lg"
-              disabled={
-                researching ||
-                (researchInput === "quick" && (!resJobTitle.trim() || !resCompanyName.trim())) ||
-                (researchInput === "full" && !resJobSpec.trim())
-              }
-            >
+            <Button type="submit" className="w-full glow-accent" size="lg" disabled={researching || (researchInput === "quick" && (!resJobTitle.trim() || !resCompanyName.trim())) || (researchInput === "full" && !resJobSpec.trim())}>
               {researching ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Researching...</>
               ) : (
@@ -518,7 +496,6 @@ export default function SearchTab() {
             </Button>
           </form>
 
-          {/* Progress indicator */}
           {researching && (
             <div className="glass-card p-8 flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -530,35 +507,24 @@ export default function SearchTab() {
             </div>
           )}
 
-          {/* Research Results */}
           {researchData && !researching && (
             <div className="space-y-3">
-              {/* Target Companies */}
               {researchData.target_companies && researchData.target_companies.length > 0 && (
                 <div className="glass-card overflow-hidden">
-                  <button
-                    onClick={() => toggleSection("companies")}
-                    className="w-full flex items-center justify-between p-4 text-left"
-                  >
+                  <button onClick={() => toggleSection("companies")} className="w-full flex items-center justify-between p-4 text-left">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-primary" />
                       <span className="text-sm font-semibold text-foreground">Target Companies</span>
                       <span className="text-xs text-muted-foreground">({researchData.target_companies.length})</span>
                     </div>
-                    {expandedSections.has("companies") ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    {expandedSections.has("companies") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   </button>
                   {expandedSections.has("companies") && (
                     <div className="px-4 pb-4 space-y-2">
                       <div className="flex flex-wrap gap-1.5">
                         {researchData.target_companies.map((c, i) => (
                           <div key={i} className="group relative">
-                            <span className="inline-block rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary cursor-default">
-                              {c.name}
-                            </span>
+                            <span className="inline-block rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary cursor-default">{c.name}</span>
                             {c.rationale && (
                               <div className="hidden group-hover:block absolute z-10 bottom-full left-0 mb-1 p-2 rounded-md bg-popover border border-border shadow-lg max-w-[250px]">
                                 <p className="text-xs text-popover-foreground">{c.rationale}</p>
@@ -572,22 +538,14 @@ export default function SearchTab() {
                 </div>
               )}
 
-              {/* EEA Signals */}
               {researchData.eea_signals && researchData.eea_signals.length > 0 && (
                 <div className="glass-card overflow-hidden">
-                  <button
-                    onClick={() => toggleSection("eea")}
-                    className="w-full flex items-center justify-between p-4 text-left"
-                  >
+                  <button onClick={() => toggleSection("eea")} className="w-full flex items-center justify-between p-4 text-left">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4 text-primary" />
                       <span className="text-sm font-semibold text-foreground">EEA Signals</span>
                     </div>
-                    {expandedSections.has("eea") ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    {expandedSections.has("eea") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   </button>
                   {expandedSections.has("eea") && (
                     <div className="px-4 pb-4 space-y-1.5">
@@ -602,30 +560,20 @@ export default function SearchTab() {
                 </div>
               )}
 
-              {/* Search Criteria */}
               {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
                 <div className="glass-card overflow-hidden">
-                  <button
-                    onClick={() => toggleSection("criteria")}
-                    className="w-full flex items-center justify-between p-4 text-left"
-                  >
+                  <button onClick={() => toggleSection("criteria")} className="w-full flex items-center justify-between p-4 text-left">
                     <div className="flex items-center gap-2">
                       <Search className="h-4 w-4 text-primary" />
                       <span className="text-sm font-semibold text-foreground">Search Criteria</span>
                     </div>
-                    {expandedSections.has("criteria") ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    {expandedSections.has("criteria") ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   </button>
                   {expandedSections.has("criteria") && (
                     <div className="px-4 pb-4">
                       <div className="flex flex-wrap gap-1.5">
                         {researchData.search_criteria.keywords.map((kw, i) => (
-                          <span key={i} className="inline-block rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground">
-                            {kw}
-                          </span>
+                          <span key={i} className="inline-block rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground">{kw}</span>
                         ))}
                       </div>
                     </div>
@@ -633,27 +581,18 @@ export default function SearchTab() {
                 </div>
               )}
 
-              {/* Raw output fallback */}
               {!researchData.target_companies?.length && !researchData.eea_signals?.length && !researchData.search_criteria?.keywords.length && researchData.raw && (
                 <div className="glass-card p-4">
                   <p className="text-xs text-muted-foreground mb-2">Research Output</p>
-                  <div className="text-xs text-secondary-foreground whitespace-pre-wrap max-h-96 overflow-y-auto font-mono">
-                    {researchData.raw}
-                  </div>
+                  <div className="text-xs text-secondary-foreground whitespace-pre-wrap max-h-96 overflow-y-auto font-mono">{researchData.raw}</div>
                 </div>
               )}
 
-              {/* Action buttons */}
               <div className="flex gap-2">
                 <Button className="flex-1 glow-accent" onClick={handleFindCandidates}>
                   <ArrowRight className="h-4 w-4 mr-2" /> Find Candidates
                 </Button>
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={handleSaveResearch}
-                  disabled={savingResearch || researchSaved}
-                >
+                <Button variant="secondary" className="flex-1" onClick={handleSaveResearch} disabled={savingResearch || researchSaved}>
                   {researchSaved ? (
                     <><Check className="h-4 w-4 mr-2" /> Saved</>
                   ) : savingResearch ? (
@@ -740,8 +679,8 @@ export default function SearchTab() {
               <Label htmlFor="searchSkills" className="text-xs">Skills / Keywords</Label>
               <Input id="searchSkills" value={searchSkills} onChange={(e) => setSearchSkills(e.target.value)} placeholder="React, Python, ML..." className="bg-secondary border-border" />
             </div>
-            <Button type="submit" className="w-full glow-accent" size="lg" disabled={searching || !searchRole.trim()}>
-              {searching ? (
+            <Button type="submit" className="w-full glow-accent" size="lg" disabled={isSearching || !searchRole.trim()}>
+              {isSearching ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Searching...</>
               ) : (
                 <><Search className="h-4 w-4 mr-2" /> Search Candidates</>
@@ -749,37 +688,56 @@ export default function SearchTab() {
             </Button>
           </form>
 
-          {searching && (
+          {/* Progress states */}
+          {searchStatus === "creating" && (
             <div className="glass-card p-8 flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Searching LinkedIn and GitHub...</p>
+              <p className="text-sm font-medium text-foreground">Creating search...</p>
+              <p className="text-xs text-muted-foreground">Setting up candidate discovery</p>
             </div>
           )}
 
-          {searchResults.length > 0 && !searching && (
+          {searchStatus === "polling" && (
+            <div className="glass-card p-8 flex flex-col items-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm font-medium text-foreground">Searching for candidates...</p>
+              <p className="text-xs text-muted-foreground">This may take up to 2 minutes</p>
+              {websetId && (
+                <p className="text-[10px] text-muted-foreground/50 font-mono">webset: {websetId.substring(0, 12)}...</p>
+              )}
+              <div className="w-full max-w-xs h-1 bg-secondary rounded-full overflow-hidden mt-2">
+                <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "45%" }} />
+              </div>
+            </div>
+          )}
+
+          {searchStatus === "error" && searchResults.length === 0 && (
+            <div className="glass-card p-6 text-center">
+              <p className="text-sm text-destructive">Search failed. Try again with different criteria.</p>
+            </div>
+          )}
+
+          {searchStatus === "done" && searchResults.length === 0 && (
+            <div className="glass-card p-6 text-center">
+              <p className="text-sm text-muted-foreground">No candidates found. Try broader criteria.</p>
+            </div>
+          )}
+
+          {searchResults.length > 0 && searchStatus === "done" && (
             <div className="space-y-3">
-              {/* Result count + auto-enrich progress */}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                  {searchResults.length} profile{searchResults.length !== 1 ? "s" : ""} found
+                  Found {searchResults.length} candidate{searchResults.length !== 1 ? "s" : ""}
                 </p>
-                {autoEnriching && (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                    <span className="text-xs text-primary">
-                      Enriching {autoEnrichDone}/{autoEnrichCount} strong profiles...
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Filter chips */}
               <div className="flex gap-1.5 flex-wrap">
                 {([
-                  { key: "all" as SourceFilter, label: "All", count: searchResults.length },
-                  { key: "linkedin" as SourceFilter, label: "LinkedIn", count: linkedInCount },
-                  { key: "github" as SourceFilter, label: "GitHub", count: githubCount },
-                  { key: "enriched" as SourceFilter, label: "Auto-enriched", count: enrichedCount },
+                  { key: "all", label: "All", count: searchResults.length },
+                  { key: "linkedin", label: "LinkedIn", count: linkedInCount },
+                  { key: "github", label: "GitHub", count: githubCount },
+                  { key: "web", label: "Other", count: webCount },
                 ]).filter((f) => f.count > 0 || f.key === "all").map(({ key, label, count }) => (
                   <button
                     key={key}
@@ -799,70 +757,33 @@ export default function SearchTab() {
               {filteredResults.map((candidate, filteredIdx) => {
                 const idx = searchResults.indexOf(candidate);
                 return (
-                  <div key={idx}>
-                    <div className="rounded-xl border border-[hsl(var(--border))] bg-[rgba(255,255,255,0.03)] p-4 space-y-3 hover:border-primary/40 transition-colors">
+                  <div key={candidate.id || idx}>
+                    <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3 hover:border-primary/40 transition-colors">
                       {/* Top row: Avatar + Name + Source badge */}
                       <div className="flex items-start gap-3">
-                        {/* Confidence dot + Avatar */}
-                        <div className="relative">
-                          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                            <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
-                          </div>
-                          {candidate.confidence === "high" && (
-                            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background" />
-                          )}
-                          {candidate.confidence === "medium" && (
-                            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-yellow-500 border-2 border-background" />
-                          )}
+                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
                         </div>
 
-                        {/* Name + role/headline */}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-bold text-foreground truncate">{candidate.name || "Unknown"}</h3>
+                          <h3 className="text-sm font-bold text-foreground truncate">{candidate.name}</h3>
                           {candidate.role && (
                             <p className="text-xs text-muted-foreground truncate">{candidate.role}</p>
                           )}
-                          {candidate.company && (
-                            <p className="text-xs text-muted-foreground font-mono">{candidate.company}</p>
-                          )}
                         </div>
 
-                        {/* Source badge + auto-enriched badge */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {candidate.autoEnriched && (
-                            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
-                              <Zap className="h-2.5 w-2.5" /> Auto-enriched
-                            </span>
-                          )}
-                          <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${getSourceBadgeClasses(candidate.source)}`}>
-                            {getSourceLabel(candidate.source)}
-                          </span>
-                        </div>
+                        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${getSourceBadgeClasses(candidate.source)}`}>
+                          {getSourceLabel(candidate.source)}
+                        </span>
                       </div>
 
-                      {/* Bio/summary */}
-                      {candidate.summary && candidate.summary !== "View profile for details" && (
+                      {/* Description */}
+                      {candidate.description && (
                         <p className="text-xs text-secondary-foreground line-clamp-2 leading-relaxed">
-                          {candidate.summary}
+                          {candidate.description.length > 150
+                            ? candidate.description.substring(0, 150) + "..."
+                            : candidate.description}
                         </p>
-                      )}
-
-                      {/* Tags (GitHub stars, languages, etc.) */}
-                      {candidate.tags && candidate.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {candidate.tags.map((tag, i) => (
-                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Auto-enrichment data inline */}
-                      {candidate.autoEnriched && candidate.enrichmentData && (
-                        <div className="mt-1">
-                          <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: candidate.enrichmentData }} />
-                        </div>
                       )}
 
                       {/* Action buttons */}
@@ -908,7 +829,7 @@ export default function SearchTab() {
                     </div>
 
                     {/* Manual enrichment result */}
-                    {enrichedIdx === idx && enrichedResult && !candidate.autoEnriched && (
+                    {enrichedIdx === idx && enrichedResult && (
                       <div className="mt-2">
                         <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: enrichedResult }} />
                       </div>
