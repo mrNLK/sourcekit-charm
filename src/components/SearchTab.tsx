@@ -441,7 +441,13 @@ export default function SearchTab() {
     setSaved(false);
     try {
       const { data, error } = await supabase.functions.invoke("enrich-candidate", {
-        body: { name: name.trim(), company: company.trim(), role: role.trim(), handle: handle.trim() },
+        body: {
+          name: name.trim(),
+          title: role.trim(),
+          company: company.trim(),
+          linkedin_url: handle.trim(),
+          description: "",
+        },
       });
       if (error) throw error;
       setResult(data);
@@ -582,7 +588,13 @@ export default function SearchTab() {
     setEnrichedIdx(null);
     try {
       const { data, error } = await supabase.functions.invoke("enrich-candidate", {
-        body: { name: candidate.name, company: candidate.company, role: candidate.role || "", handle: "" },
+        body: {
+          name: candidate.name,
+          title: candidate.role || "",
+          company: candidate.company,
+          linkedin_url: candidate.url?.includes("linkedin.com") ? candidate.url : "",
+          description: candidate.description || "",
+        },
       });
       if (error) throw error;
       setEnrichedResult(data);
