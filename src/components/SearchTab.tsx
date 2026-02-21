@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
@@ -12,6 +12,7 @@ import CandidateCard from "./CandidateCard";
 type Mode = "research" | "search" | "enrich";
 type ResearchInput = "quick" | "full";
 type SearchStatus = "idle" | "creating" | "polling" | "done" | "error";
+type ViewMode = "expanded" | "compact";
 
 interface SearchResult {
   id: string;
@@ -21,6 +22,9 @@ interface SearchResult {
   source: string;
   company: string;
   role: string;
+  location: string;
+  headline: string;
+  signals: string[];
   enrichmentData?: any;
   autoEnriched?: boolean;
 }
@@ -81,6 +85,18 @@ function getInitials(name: string): string {
     .join("");
 }
 
+function nameHash(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+}
+
+function avatarHue(name: string): number {
+  return nameHash(name) % 360;
+}
+
 function detectSource(url: string): string {
   if (url.includes("linkedin.com")) return "linkedin";
   if (url.includes("github.com")) return "github";
@@ -97,12 +113,121 @@ function getSourceLabel(source: string): string {
   }
 }
 
-function getSourceBadgeClasses(source: string): string {
+function getSourceBadgeStyle(source: string): string {
   switch (source) {
-    case "linkedin": return "bg-primary/20 text-primary";
+    case "linkedin": return "bg-[hsl(201,100%,35%)]/20 text-[hsl(201,100%,55%)]";
     case "github": return "bg-muted text-muted-foreground";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+function extractNameFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("linkedin.com")) {
+      const match = u.pathname.match(/\/in\/([^/]+)/);
+      if (match) {
+        const slug = match[1].replace(/-\w{4,}$/, ""); // strip trailing hash
+        return slug
+          .split("-")
+          .filter(Boolean)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      }
+    }
+    if (u.hostname.includes("github.com")) {
+      const parts = u.pathname.split("/").filter(Boolean);
+      if (parts.length >= 1) return parts[0];
+    }
+  } catch {}
+  return null;
+}
+
+function parseMetadata(description: string): { title: string; company: string; location: string; headline: string } {
+  let title = "";
+  let company = "";
+  let location = "";
+  let headline = "";
+
+  if (!description) return { title, company, location, headline };
+
+  // Try "Title at Company" pattern
+  const atMatch = description.match(/^([^.,:]+?)\s+at\s+([^.,:]+)/i);
+  if (atMatch) {
+    title = atMatch[1].trim();
+    company = atMatch[2].trim();
+  }
+
+  // Try "Title, Company" pattern
+  if (!title) {
+    const commaMatch = description.match(/^([^.]+?),\s+([^.]+)/);
+    if (commaMatch && commaMatch[1].length < 60) {
+      title = commaMatch[1].trim();
+      company = commaMatch[2].trim();
+    }
+  }
+
+  // Try "Company - Title" pattern
+  if (!title) {
+    const dashMatch = description.match(/^([^-]+?)\s+-\s+(.+)/);
+    if (dashMatch && dashMatch[1].length < 40) {
+      company = dashMatch[1].trim();
+      title = dashMatch[2].trim();
+    }
+  }
+
+  // Location patterns
+  const locMatch = description.match(/(?:based in|located in|from)\s+([^.,:]+)/i);
+  if (locMatch) location = locMatch[1].trim();
+
+  // First line as headline
+  const firstLine = description.split(/[.\n]/)[0]?.trim() || "";
+  headline = firstLine.length > 120 ? firstLine.substring(0, 120) + "..." : firstLine;
+
+  return { title, company, location, headline };
+}
+
+const SIGNAL_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /\bPhD\b/i, label: "PhD" },
+  { pattern: /\bM\.?S\.?\b/i, label: "MS" },
+  { pattern: /\bMBA\b/i, label: "MBA" },
+  { pattern: /\bMIT\b/, label: "MIT" },
+  { pattern: /\bStanford\b/i, label: "Stanford" },
+  { pattern: /\bCMU\b|Carnegie Mellon/i, label: "CMU" },
+  { pattern: /\bHarvard\b/i, label: "Harvard" },
+  { pattern: /\bBerkeley\b/i, label: "Berkeley" },
+  { pattern: /\bOxford\b/i, label: "Oxford" },
+  { pattern: /\bCambridge\b/i, label: "Cambridge" },
+  { pattern: /\bGoogle\b/, label: "Ex-Google" },
+  { pattern: /\bMeta\b|\bFacebook\b/, label: "Ex-Meta" },
+  { pattern: /\bOpenAI\b/, label: "OpenAI" },
+  { pattern: /\bDeepMind\b/, label: "DeepMind" },
+  { pattern: /\bApple\b/, label: "Apple" },
+  { pattern: /\bAmazon\b/, label: "Amazon" },
+  { pattern: /\bMicrosoft\b/, label: "Microsoft" },
+  { pattern: /\bNvidia\b/i, label: "NVIDIA" },
+  { pattern: /\bmaintainer\b/i, label: "Maintainer" },
+  { pattern: /\bcontributor\b/i, label: "Contributor" },
+  { pattern: /(\d+)\+?\s*stars/i, label: "GitHub Stars" },
+  { pattern: /\bNeurIPS\b/i, label: "NeurIPS" },
+  { pattern: /\bICML\b/, label: "ICML" },
+  { pattern: /\bfirst[- ]author\b/i, label: "First Author" },
+  { pattern: /\bpublication/i, label: "Published" },
+  { pattern: /\bY Combinator\b|\bYC\b/, label: "YC" },
+  { pattern: /\bfounder\b/i, label: "Founder" },
+];
+
+function extractSignals(text: string): string[] {
+  const found = new Set<string>();
+  for (const { pattern, label } of SIGNAL_PATTERNS) {
+    if (pattern.test(text)) found.add(label);
+  }
+  return Array.from(found).slice(0, 6);
+}
+
+function sortResults(results: SearchResult[]): SearchResult[] {
+  const order: Record<string, number> = { linkedin: 0, github: 1, X: 2, web: 3 };
+  return [...results].sort((a, b) => (order[a.source] ?? 3) - (order[b.source] ?? 3));
 }
 
 export default function SearchTab() {
@@ -132,6 +257,7 @@ export default function SearchTab() {
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [savedIdxs, setSavedIdxs] = useState<Set<number>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
@@ -225,16 +351,26 @@ export default function SearchTab() {
       const websetStatus = data?.websetStatus || "unknown";
 
       if (items.length > 0) {
-        const results: SearchResult[] = items.map((item: any) => ({
-          id: item.id || crypto.randomUUID(),
-          name: item.name || "Unknown",
-          url: item.url || "",
-          description: item.description || "",
-          source: detectSource(item.url || ""),
-          company: "",
-          role: "",
-        }));
-        setSearchResults(results);
+        const results: SearchResult[] = items.map((item: any) => {
+          const url = item.url || "";
+          const desc = item.description || "";
+          const rawName = item.name || extractNameFromUrl(url) || "Unknown";
+          const meta = parseMetadata(desc);
+          const signals = extractSignals(desc);
+          return {
+            id: item.id || crypto.randomUUID(),
+            name: rawName,
+            url,
+            description: desc,
+            source: detectSource(url),
+            company: meta.company,
+            role: meta.title,
+            location: meta.location,
+            headline: meta.headline,
+            signals,
+          };
+        });
+        setSearchResults(sortResults(results));
         setSearchStatus("done");
         return;
       }
@@ -712,27 +848,37 @@ export default function SearchTab() {
           )}
 
           {searchStatus === "error" && searchResults.length === 0 && (
-            <div className="glass-card p-6 text-center">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
               <p className="text-sm text-destructive">Search failed. Try again with different criteria.</p>
+              <Button size="sm" variant="outline" className="border-destructive/30 text-destructive" onClick={() => setSearchStatus("idle")}>
+                <RefreshCw className="h-3 w-3 mr-1" /> Retry
+              </Button>
             </div>
           )}
 
           {searchStatus === "done" && searchResults.length === 0 && (
             <div className="glass-card p-6 text-center">
-              <p className="text-sm text-muted-foreground">No candidates found. Try broader criteria.</p>
+              <p className="text-sm text-muted-foreground">No candidates found. Try broadening your search criteria.</p>
             </div>
           )}
 
           {searchResults.length > 0 && searchStatus === "done" && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-semibold text-foreground">
                   Found {searchResults.length} candidate{searchResults.length !== 1 ? "s" : ""}
                 </p>
+                <button
+                  onClick={() => setViewMode(viewMode === "expanded" ? "compact" : "expanded")}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {viewMode === "expanded" ? <LayoutList className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+                  {viewMode === "expanded" ? "Compact" : "Expanded"}
+                </button>
               </div>
 
               {/* Filter chips */}
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {([
                   { key: "all", label: "All", count: searchResults.length },
                   { key: "linkedin", label: "LinkedIn", count: linkedInCount },
@@ -742,13 +888,13 @@ export default function SearchTab() {
                   <button
                     key={key}
                     onClick={() => setSourceFilter(key)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                       sourceFilter === key
                         ? "bg-primary text-primary-foreground"
                         : "bg-secondary text-muted-foreground hover:text-foreground border border-border"
                     }`}
                   >
-                    {label} {count > 0 && <span className="ml-1 opacity-70">{count}</span>}
+                    {label} ({count})
                   </button>
                 ))}
               </div>
@@ -756,34 +902,70 @@ export default function SearchTab() {
               {/* Result cards */}
               {filteredResults.map((candidate, filteredIdx) => {
                 const idx = searchResults.indexOf(candidate);
+                const hue = avatarHue(candidate.name);
+                const titleLine = candidate.role
+                  ? `${candidate.role}${candidate.company ? ` @ ${candidate.company}` : ""}`
+                  : candidate.company || "";
+
                 return (
-                  <div key={candidate.id || idx}>
-                    <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3 hover:border-primary/40 transition-colors">
+                  <div
+                    key={candidate.id || idx}
+                    className="animate-in fade-in"
+                    style={{ animationDelay: `${filteredIdx * 150}ms`, animationFillMode: "both" }}
+                  >
+                    <div className="rounded-xl border border-border bg-card p-4 space-y-3 hover:border-[hsl(var(--border))]/60 transition-colors">
                       {/* Top row: Avatar + Name + Source badge */}
                       <div className="flex items-start gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
+                        <div
+                          className="h-10 w-10 rounded-full flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `hsl(${hue}, 60%, 20%)` }}
+                        >
+                          <span className="text-sm font-bold" style={{ color: `hsl(${hue}, 70%, 70%)` }}>
+                            {getInitials(candidate.name)}
+                          </span>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-bold text-foreground truncate">{candidate.name}</h3>
-                          {candidate.role && (
-                            <p className="text-xs text-muted-foreground truncate">{candidate.role}</p>
+                          <h3 className="text-base font-bold text-foreground truncate">{candidate.name}</h3>
+                          {titleLine && (
+                            <p className="text-xs text-muted-foreground truncate">{titleLine}</p>
+                          )}
+                          {candidate.location && (
+                            <p className="text-xs text-muted-foreground/70 truncate">{candidate.location}</p>
                           )}
                         </div>
 
-                        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${getSourceBadgeClasses(candidate.source)}`}>
+                        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${getSourceBadgeStyle(candidate.source)}`}>
                           {getSourceLabel(candidate.source)}
                         </span>
                       </div>
 
-                      {/* Description */}
-                      {candidate.description && (
-                        <p className="text-xs text-secondary-foreground line-clamp-2 leading-relaxed">
-                          {candidate.description.length > 150
-                            ? candidate.description.substring(0, 150) + "..."
-                            : candidate.description}
-                        </p>
+                      {/* Expanded content */}
+                      {viewMode === "expanded" && (
+                        <>
+                          {/* Bio */}
+                          {candidate.description && (
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                              {candidate.description.length > 150
+                                ? candidate.description.substring(0, 150) + "..."
+                                : candidate.description}
+                            </p>
+                          )}
+
+                          {/* Signal pills */}
+                          {candidate.signals.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.signals.map((signal) => (
+                                <span
+                                  key={signal}
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-medium border border-primary/20 text-primary/80 bg-primary/5"
+                                >
+                                  {signal}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Action buttons */}
@@ -820,9 +1002,9 @@ export default function SearchTab() {
                             href={candidate.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                            className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors gap-1"
                           >
-                            <ExternalLink className="h-3.5 w-3.5" />
+                            <ExternalLink className="h-3 w-3" /> View
                           </a>
                         )}
                       </div>
