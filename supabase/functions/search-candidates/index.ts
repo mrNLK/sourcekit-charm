@@ -8,12 +8,13 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log("SEARCH-CANDIDATES-V2-DEPLOYED", new Date().toISOString());
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -46,7 +47,6 @@ serve(async (req) => {
       });
     }
 
-    // ACTION: create-webset - initiates a Websets search and returns the webset ID
     if (action === "create-webset") {
       const { role, company, location, skills } = body;
 
@@ -57,14 +57,12 @@ serve(async (req) => {
         });
       }
 
-      // Build query string
       const queryParts = [role];
       if (company) queryParts.push(company);
       if (location) queryParts.push(location);
       if (skills) queryParts.push(skills);
       const query = queryParts.join(" ");
 
-      // Build criteria array
       const criteria: { description: string }[] = [
         { description: `This person currently works as a ${role} or similar title` },
       ];
@@ -78,25 +76,23 @@ serve(async (req) => {
         criteria.push({ description: `This person has experience with ${skills}` });
       }
 
-      const createUrl = "https://api.exa.ai/websets";
-      const createBody = {
-        search: {
-          query,
-          count: 20,
-          entity: { type: "person" },
-          criteria,
-        },
-      };
       console.log("Creating Exa Webset:", JSON.stringify({ query, criteria }));
-      console.log("Request URL:", createUrl);
+      console.log("Request URL: https://api.exa.ai/websets");
 
-      const response = await fetch(createUrl, {
+      const response = await fetch("https://api.exa.ai/websets", {
         method: "POST",
         headers: {
           "x-api-key": exaApiKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(createBody),
+        body: JSON.stringify({
+          search: {
+            query,
+            count: 20,
+            entity: { type: "person" },
+            criteria,
+          },
+        }),
       });
 
       console.log("Create response status:", response.status);
@@ -118,7 +114,6 @@ serve(async (req) => {
       });
     }
 
-    // ACTION: poll-webset - fetches items for a given webset ID
     if (action === "poll-webset") {
       const { websetId } = body;
 
@@ -129,7 +124,6 @@ serve(async (req) => {
         });
       }
 
-      // First check webset status
       const statusUrl = `https://api.exa.ai/websets/${websetId}`;
       console.log("Polling webset status:", statusUrl);
       const statusRes = await fetch(statusUrl, {
@@ -148,7 +142,6 @@ serve(async (req) => {
 
       const statusData = await statusRes.json();
 
-      // Fetch items
       const itemsUrl = `https://api.exa.ai/websets/${websetId}/items`;
       console.log("Fetching items:", itemsUrl);
       const itemsRes = await fetch(itemsUrl, {
