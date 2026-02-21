@@ -58,18 +58,20 @@ serve(async (req) => {
 
     const researchPrompt = `For the role of ${job_title} at ${company_name}: 1) Identify 15-20 specific companies where top talent for this exact role currently works. Include direct competitors, adjacent companies, and research labs. For each company, explain WHY their employees are relevant. 2) Define what Evidence of Exceptional Ability (EEA) looks like for this role - specific publications, conference talks (NeurIPS, ICML, etc), open source projects, patents, awards, GitHub contributions, or other verifiable signals that put someone in the top 5-10% of practitioners. 3) List specific search keywords, skills, and criteria that would identify exceptional candidates for this role. If a full job spec is provided, use it for additional context: ${job_spec || "N/A"}`;
 
-    const requestUrl = "https://api.getparallel.com/v1/tasks";
+    const requestUrl = "https://api.parallel.ai/v1/tasks/runs";
     const requestBody = JSON.stringify({
       input: researchPrompt,
-      output_type: "text",
+      processor: "pro",
+      task_spec: {
+        output_schema: {
+          type: "text",
+        },
+      },
     });
 
     console.log("Parallel API Request:", {
       url: requestUrl,
-      headers: {
-        Authorization: `Bearer ${parallelApiKey ? "[MASKED]" : "undefined"}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "x-api-key": "[MASKED]", "Content-Type": "application/json" },
       bodyLength: requestBody.length,
       bodyPreview: requestBody.slice(0, 200),
     });
@@ -77,7 +79,7 @@ serve(async (req) => {
     const createRes = await fetch(requestUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${parallelApiKey}`,
+        "x-api-key": parallelApiKey,
         "Content-Type": "application/json",
       },
       body: requestBody,
@@ -110,12 +112,12 @@ serve(async (req) => {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000));
 
-      const pollUrl = `https://api.getparallel.com/v1/tasks/${taskId}`;
+      const pollUrl = `https://api.parallel.ai/v1/tasks/runs/${taskId}`;
       console.log(`Poll attempt ${i + 1}/${maxAttempts}: ${pollUrl}`);
 
       const pollRes = await fetch(pollUrl, {
         method: "GET",
-        headers: { Authorization: `Bearer ${parallelApiKey}` },
+        headers: { "x-api-key": parallelApiKey },
       });
 
       console.log("Poll response status:", pollRes.status);
@@ -132,7 +134,7 @@ serve(async (req) => {
       const pollData = await pollRes.json();
       console.log("Poll status:", pollData.status);
 
-      if (pollData.status === "complete" || pollData.status === "completed") {
+      if (pollData.status === "completed") {
         return new Response(JSON.stringify(pollData), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
