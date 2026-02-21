@@ -77,9 +77,9 @@ serve(async (req) => {
       }
 
       console.log("Creating Exa Webset:", JSON.stringify({ query, criteria }));
-      console.log("Request URL: https://api.exa.ai/websets");
+      console.log("Request URL: https://api.exa.ai/websets/v0/websets");
 
-      const response = await fetch("https://api.exa.ai/websets", {
+      const response = await fetch("https://api.exa.ai/websets/v0/websets", {
         method: "POST",
         headers: {
           "x-api-key": exaApiKey,
@@ -124,7 +124,7 @@ serve(async (req) => {
         });
       }
 
-      const statusUrl = `https://api.exa.ai/websets/${websetId}`;
+      const statusUrl = `https://api.exa.ai/websets/v0/websets/${websetId}`;
       console.log("Polling webset status:", statusUrl);
       const statusRes = await fetch(statusUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
@@ -142,7 +142,7 @@ serve(async (req) => {
 
       const statusData = await statusRes.json();
 
-      const itemsUrl = `https://api.exa.ai/websets/${websetId}/items`;
+      const itemsUrl = `https://api.exa.ai/websets/v0/websets/${websetId}/items`;
       console.log("Fetching items:", itemsUrl);
       const itemsRes = await fetch(itemsUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
