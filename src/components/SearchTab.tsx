@@ -37,7 +37,7 @@ interface ResearchData {
 }
 
 function parseResearchOutput(data: any): ResearchData {
-  const output = data?.output || data?.result || data?.data || data?.response || "";
+  const output = data?.research_output || data?.result_data?.output || data?.output || data?.result || data?.data || data?.response || "";
   const text = typeof output === "string" ? output : JSON.stringify(output);
 
   const companies: { name: string; rationale: string }[] = [];
