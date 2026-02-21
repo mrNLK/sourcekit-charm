@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw, Trash2, Clock, Play, AlertTriangle } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw, Trash2, Clock, Play, AlertTriangle, Clipboard, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
@@ -27,6 +27,8 @@ interface SearchResult {
   signals: string[];
   enrichmentData?: any;
   autoEnriched?: boolean;
+  pictureUrl?: string;
+  duplicate?: boolean;
 }
 
 interface ResearchData {
@@ -41,6 +43,17 @@ interface ResearchBasis {
   title?: string;
 }
 
+interface SearchTabProps {
+  persistedSearchResults?: SearchResult[];
+  onSearchResultsChange?: (results: SearchResult[]) => void;
+  persistedResearchData?: ResearchData | null;
+  onResearchDataChange?: (data: ResearchData | null) => void;
+  persistedResearchRaw?: any;
+  onResearchRawChange?: (raw: any) => void;
+  persistedSearchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
+}
+
 function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[] } {
   const output = data?.research_output || data?.result_data?.output || data?.output || data?.result || data?.data || data?.response || "";
   const text = typeof output === "string" ? output : JSON.stringify(output);
@@ -50,7 +63,6 @@ function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[
   const eeaSignals: string[] = [];
   const keywords: string[] = [];
 
-  // Split text into sections by markdown headers (##, ###) or numbered sections (1), 2), etc.)
   const sections: { title: string; body: string }[] = [];
   const headerPattern = /(?:^|\n)(#{1,3}\s+.+|(?:\d+\)\s*.+))/g;
   let lastIdx = 0;
@@ -162,7 +174,7 @@ function extractNameFromUrl(url: string): string | null {
     if (u.hostname.includes("linkedin.com")) {
       const match = u.pathname.match(/\/in\/([^/]+)/);
       if (match) {
-        const slug = match[1].replace(/-\w{4,}$/, ""); // strip trailing hash
+        const slug = match[1].replace(/-\w{4,}$/, "");
         return slug
           .split("-")
           .filter(Boolean)
@@ -180,34 +192,19 @@ function extractNameFromUrl(url: string): string | null {
 
 function parseNameFromDescription(desc: string): string {
   if (!desc) return "";
-  const namePattern = /([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/;
-
-  // Pattern 1: "Name is a Title"
   const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
   if (isMatch) return isMatch[1].trim();
-
-  // Pattern 2: "Name, a/an Title"
   const commaAMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+(?:a|an)\s+/);
   if (commaAMatch) return commaAMatch[1].trim();
-
-  // Pattern 3: "Name - Title" or "Name | Title"
   const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–|]\s+/);
   if (dashMatch) return dashMatch[1].trim();
-
-  // Pattern 4: "Name works/currently/leads/manages/specializes..."
   const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
   if (worksMatch) return worksMatch[1].trim();
-
-  // Pattern 5: "Name, Title" (simple comma)
   const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
   if (commaMatch) return commaMatch[1].trim();
-
-  // Pattern 6: Name anywhere in first 200 chars with title context
   const snippet = desc.substring(0, 200);
   const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
   if (titleContextMatch) return titleContextMatch[1].trim();
-
-  // Pattern 7: Short first line as name
   const firstLine = desc.split("\n")[0].trim();
   if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
     const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
@@ -216,7 +213,6 @@ function parseNameFromDescription(desc: string): string {
       return cleaned;
     }
   }
-
   return "";
 }
 
@@ -225,51 +221,25 @@ function parseMetadata(description: string): { title: string; company: string; l
   let company = "";
   let location = "";
   let headline = "";
-
   if (!description) return { title, company, location, headline };
-
-  // Try "[Name] is a [Title] at [Company]" pattern
   const isAtMatch = description.match(/is\s+(?:a |an )?(.+?)\s+at\s+([^.,:;]+)/i);
-  if (isAtMatch) {
-    title = isAtMatch[1].trim();
-    company = isAtMatch[2].trim();
-  }
-
-  // Try "Title at Company" pattern
+  if (isAtMatch) { title = isAtMatch[1].trim(); company = isAtMatch[2].trim(); }
   if (!title) {
     const atMatch = description.match(/^([^.,:]+?)\s+at\s+([^.,:]+)/i);
-    if (atMatch) {
-      title = atMatch[1].trim();
-      company = atMatch[2].trim();
-    }
+    if (atMatch) { title = atMatch[1].trim(); company = atMatch[2].trim(); }
   }
-
-  // Try "Title, Company" pattern
   if (!title) {
     const commaMatch = description.match(/^([^.]+?),\s+([^.]+)/);
-    if (commaMatch && commaMatch[1].length < 60) {
-      title = commaMatch[1].trim();
-      company = commaMatch[2].trim();
-    }
+    if (commaMatch && commaMatch[1].length < 60) { title = commaMatch[1].trim(); company = commaMatch[2].trim(); }
   }
-
-  // Try "Company - Title" pattern
   if (!title) {
     const dashMatch = description.match(/^([^-]+?)\s+-\s+(.+)/);
-    if (dashMatch && dashMatch[1].length < 40) {
-      company = dashMatch[1].trim();
-      title = dashMatch[2].trim();
-    }
+    if (dashMatch && dashMatch[1].length < 40) { company = dashMatch[1].trim(); title = dashMatch[2].trim(); }
   }
-
-  // Location patterns
   const locMatch = description.match(/(?:based in|located in|from)\s+([^.,:;]+)/i);
   if (locMatch) location = locMatch[1].trim();
-
-  // First line as headline
   const firstLine = description.split(/[.\n]/)[0]?.trim() || "";
   headline = firstLine.length > 120 ? firstLine.substring(0, 120) + "..." : firstLine;
-
   return { title, company, location, headline };
 }
 
@@ -316,7 +286,16 @@ function sortResults(results: SearchResult[]): SearchResult[] {
   return [...results].sort((a, b) => (order[a.source] ?? 3) - (order[b.source] ?? 3));
 }
 
-export default function SearchTab() {
+export default function SearchTab({
+  persistedSearchResults,
+  onSearchResultsChange,
+  persistedResearchData,
+  onResearchDataChange,
+  persistedResearchRaw,
+  onResearchRawChange,
+  persistedSearchQuery,
+  onSearchQueryChange,
+}: SearchTabProps) {
   const [mode, setMode] = useState<Mode>("research");
 
   // Enrich state
@@ -329,13 +308,15 @@ export default function SearchTab() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Search state
+  // Search state - restore from persisted props
   const [searchRole, setSearchRole] = useState("");
   const [searchCompany, setSearchCompany] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
   const [searchSkills, setSearchSkills] = useState("");
-  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>(
+    persistedSearchResults && persistedSearchResults.length > 0 ? "done" : "idle"
+  );
+  const [searchResults, setSearchResultsLocal] = useState<SearchResult[]>(persistedSearchResults || []);
   const [websetId, setWebsetId] = useState<string | null>(null);
   const [enrichingIdx, setEnrichingIdx] = useState<number | null>(null);
   const [enrichedResult, setEnrichedResult] = useState<any>(null);
@@ -344,23 +325,28 @@ export default function SearchTab() {
   const [savedIdxs, setSavedIdxs] = useState<Set<number>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
+  const [searchCount, setSearchCount] = useState<number>(20);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
+
+  // Re-enrich confirmation
+  const [reEnrichConfirm, setReEnrichConfirm] = useState<number | null>(null);
 
   // Batch enrich state
   const [batchEnriching, setBatchEnriching] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [batchTotal, setBatchTotal] = useState(0);
+  const [batchSkipped, setBatchSkipped] = useState(0);
   const batchCancelRef = useRef(false);
 
-  // Research state
+  // Research state - restore from persisted props
   const [researchInput, setResearchInput] = useState<ResearchInput>("quick");
   const [resJobTitle, setResJobTitle] = useState("");
   const [resCompanyName, setResCompanyName] = useState("");
   const [resJobSpec, setResJobSpec] = useState("");
   const [researching, setResearching] = useState(false);
-  const [researchData, setResearchData] = useState<ResearchData | null>(null);
-  const [researchRaw, setResearchRaw] = useState<any>(null);
+  const [researchData, setResearchDataLocal] = useState<ResearchData | null>(persistedResearchData || null);
+  const [researchRaw, setResearchRawLocal] = useState<any>(persistedResearchRaw || null);
   const [savingResearch, setSavingResearch] = useState(false);
   const [researchSaved, setResearchSaved] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["companies", "eea", "criteria"]));
@@ -384,8 +370,37 @@ export default function SearchTab() {
     newIdx: number;
   } | null>(null);
 
+  // Copied LinkedIn URL state
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Wrapper to sync local and parent state for search results
+  const setSearchResults = useCallback((updater: SearchResult[] | ((prev: SearchResult[]) => SearchResult[])) => {
+    setSearchResultsLocal((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      onSearchResultsChange?.(next);
+      return next;
+    });
+  }, [onSearchResultsChange]);
+
+  const setResearchData = useCallback((data: ResearchData | null) => {
+    setResearchDataLocal(data);
+    onResearchDataChange?.(data);
+  }, [onResearchDataChange]);
+
+  const setResearchRaw = useCallback((raw: any) => {
+    setResearchRawLocal(raw);
+    onResearchRawChange?.(raw);
+  }, [onResearchRawChange]);
+
+  // Restore search query from persisted
+  useEffect(() => {
+    if (persistedSearchQuery) {
+      setSearchRole(persistedSearchQuery);
+    }
+  }, []);
 
   // Cleanup polling on unmount + load search history + load settings
   useEffect(() => {
@@ -445,7 +460,6 @@ export default function SearchTab() {
     setSearchLocation(params.location || "");
     setSearchSkills(params.skills || "");
     setMode("search");
-    // Auto-submit after state settles
     setTimeout(() => {
       const form = document.getElementById("search-form") as HTMLFormElement;
       if (form) form.requestSubmit();
@@ -459,6 +473,13 @@ export default function SearchTab() {
       else next.add(section);
       return next;
     });
+  };
+
+  const handleCopyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url);
+    setCopiedUrl(url);
+    toast({ title: "Copied to clipboard" });
+    setTimeout(() => setCopiedUrl(null), 2000);
   };
 
   // ---- Enrich mode ----
@@ -544,11 +565,13 @@ export default function SearchTab() {
             location: person?.location || meta.location,
             headline: meta.headline,
             signals,
+            pictureUrl: item.pictureUrl || person?.pictureUrl || "",
+            duplicate: item.duplicate || false,
           };
         });
         setSearchResults(sortResults(results));
         setSearchStatus("done");
-        // Save to search history
+        onSearchQueryChange?.(searchRole);
         saveSearchHistory(
           { role: searchRole, company: searchCompany, location: searchLocation, skills: searchSkills },
           results.length
@@ -556,7 +579,6 @@ export default function SearchTab() {
         return;
       }
 
-      // If webset is complete but no items, show empty
       if (websetStatus === "completed" || websetStatus === "idle") {
         setSearchResults([]);
         setSearchStatus("done");
@@ -564,14 +586,12 @@ export default function SearchTab() {
         return;
       }
 
-      // Keep polling
       pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
     } catch (err: any) {
       console.error("Poll error:", err);
-      // Retry on transient errors
       pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
     }
-  }, [toast]);
+  }, [toast, searchRole, searchCompany, searchLocation, searchSkills]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -592,6 +612,7 @@ export default function SearchTab() {
           company: searchCompany.trim(),
           location: searchLocation.trim(),
           skills: searchSkills.trim(),
+          count: searchCount,
         },
       });
 
@@ -612,6 +633,13 @@ export default function SearchTab() {
   };
 
   const handleEnrichFromSearch = async (candidate: SearchResult, idx: number) => {
+    // Check if already enriched and show confirmation
+    if (candidate.enrichmentData && reEnrichConfirm !== idx) {
+      setReEnrichConfirm(idx);
+      return;
+    }
+    setReEnrichConfirm(null);
+
     setEnrichingIdx(idx);
     setEnrichedResult(null);
     setEnrichedIdx(null);
@@ -628,6 +656,10 @@ export default function SearchTab() {
       if (error) throw error;
       setEnrichedResult(data);
       setEnrichedIdx(idx);
+      // Update the search results with enrichment data
+      setSearchResults((prev) =>
+        prev.map((r, i) => i === idx ? { ...r, enrichmentData: data, autoEnriched: false } : r)
+      );
     } catch (err: any) {
       toast({ title: "Enrichment failed", description: err.message || "Could not enrich candidate.", variant: "destructive" });
     } finally {
@@ -637,16 +669,20 @@ export default function SearchTab() {
 
   // ---- Batch enrich ----
   const handleBatchEnrich = async () => {
-    const unenriched = searchResults
-      .map((r, i) => ({ result: r, idx: i }))
-      .filter(({ result, idx }) => !result.enrichmentData && enrichedIdx !== idx);
+    const toProcess = searchResults
+      .map((r, i) => ({ result: r, idx: i }));
+    const unenriched = toProcess.filter(({ result }) => !result.enrichmentData);
+    const alreadyEnriched = toProcess.length - unenriched.length;
+
     if (unenriched.length === 0) {
       toast({ title: "All candidates already enriched" });
       return;
     }
+
     setBatchEnriching(true);
     setBatchTotal(unenriched.length);
     setBatchProgress(0);
+    setBatchSkipped(alreadyEnriched);
     batchCancelRef.current = false;
 
     for (const { result: candidate, idx } of unenriched) {
@@ -684,7 +720,6 @@ export default function SearchTab() {
   const handleSaveFromSearch = async (candidate: SearchResult, idx: number, force = false) => {
     if (!user) return;
 
-    // Duplicate check
     if (!force) {
       const { data: existing } = await supabase
         .from("candidates")
@@ -706,7 +741,8 @@ export default function SearchTab() {
       role: candidate.role || null,
       enrichment_data: enrichData,
       created_by: user.id,
-    });
+      picture_url: candidate.pictureUrl || null,
+    } as any);
     setSavingIdx(null);
     if (error) {
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
@@ -722,7 +758,6 @@ export default function SearchTab() {
   const [researchRunId, setResearchRunId] = useState<string | null>(null);
   const [researchProgress, setResearchProgress] = useState("");
 
-  // Cleanup research polling on unmount
   useEffect(() => {
     return () => {
       if (researchPollRef.current) clearInterval(researchPollRef.current);
@@ -739,7 +774,6 @@ export default function SearchTab() {
       researchPollCountRef.current++;
       const count = researchPollCountRef.current;
 
-      // Update progress message
       if (count < 6) setResearchProgress("Research started...");
       else if (count < 15) setResearchProgress("Analyzing role...");
       else if (count < 30) setResearchProgress("Mapping target companies...");
@@ -754,7 +788,6 @@ export default function SearchTab() {
         setResearchRaw(data);
         const parsed = parseResearchOutput(data);
         setResearchData(parsed);
-        // Build suggested searches from target companies
         if (parsed.target_companies?.length) {
           const jobTitle = resJobTitle.trim() || "Engineer";
           const suggestions = parsed.target_companies
@@ -775,7 +808,6 @@ export default function SearchTab() {
         return;
       }
 
-      // Timeout after 60 attempts (5 min)
       if (count >= 60) {
         if (researchPollRef.current) clearInterval(researchPollRef.current);
         researchPollRef.current = null;
@@ -785,7 +817,6 @@ export default function SearchTab() {
       }
     } catch (err: any) {
       console.error("Research poll error:", err);
-      // Don't stop polling on transient errors
     }
   }, [toast]);
 
@@ -821,8 +852,6 @@ export default function SearchTab() {
 
       setResearchRunId(runId);
       researchPollCountRef.current = 0;
-
-      // Start polling every 5 seconds
       researchPollRef.current = setInterval(() => pollResearch(runId), 5000);
     } catch (err: any) {
       setResearching(false);
@@ -947,7 +976,7 @@ export default function SearchTab() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="resCompanyName" className="text-xs">
-                    Company Name *
+                    Company *
                     {!resCompanyName && settingsCompany && <span className="text-primary/60 ml-1">(from Settings)</span>}
                   </Label>
                   <Input id="resCompanyName" value={resCompanyName} onChange={(e) => setResCompanyName(e.target.value)} placeholder={settingsCompany || "Anthropic"} required className="bg-secondary border-border" />
@@ -955,47 +984,45 @@ export default function SearchTab() {
               </div>
             ) : (
               <div className="space-y-1.5">
-                <Label htmlFor="resJobSpec" className="text-xs">Full Job Description *</Label>
-                <Textarea id="resJobSpec" value={resJobSpec} onChange={(e) => setResJobSpec(e.target.value)} placeholder="Paste the full job description here..." required rows={8} className="bg-secondary border-border text-sm" />
+                <Label htmlFor="resJobSpec" className="text-xs">Job Specification *</Label>
+                <Textarea id="resJobSpec" value={resJobSpec} onChange={(e) => setResJobSpec(e.target.value)} placeholder="Paste the full job spec here..." required className="bg-secondary border-border min-h-[120px] text-xs" />
               </div>
             )}
-            <Button type="submit" className="w-full glow-accent" size="lg" disabled={researching || (researchInput === "quick" && (!resJobTitle.trim() || !resCompanyName.trim())) || (researchInput === "full" && !resJobSpec.trim())}>
+            <Button type="submit" className="w-full glow-accent" size="lg" disabled={researching}>
               {researching ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Researching...</>
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {researchProgress || "Researching..."}</>
               ) : (
-                <><FlaskConical className="h-4 w-4 mr-2" /> Research Role</>
+                <><FlaskConical className="h-4 w-4 mr-2" /> Research</>
               )}
             </Button>
           </form>
 
+          {/* Research loading */}
           {researching && (
             <div className="glass-card p-8 flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm font-medium text-foreground">{researchProgress || "Researching role..."}</p>
-              <p className="text-xs text-muted-foreground">This may take 2-5 minutes</p>
+              <p className="text-sm font-medium text-foreground">{researchProgress}</p>
+              <p className="text-xs text-muted-foreground">This typically takes 2-4 minutes</p>
               <div className="w-full max-w-xs h-1 bg-secondary rounded-full overflow-hidden mt-2">
                 <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
               </div>
             </div>
           )}
 
+          {/* Research results */}
           {researchData && !researching && (
             <div className="space-y-3">
               {(() => {
-                const hasParsed = !!(researchData.target_companies?.length || researchData.eea_signals?.length || researchData.search_criteria?.keywords.length);
-
-                if (hasParsed) {
+                if (researchData.target_companies || researchData.eea_signals || researchData.search_criteria) {
                   return (
                     <>
-                      {/* Target Companies */}
                       {researchData.target_companies && researchData.target_companies.length > 0 && (
                         <div className="glass-card p-4 space-y-3">
                           <div className="flex items-center gap-2">
                             <Building2 className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-semibold text-foreground">Target Companies</span>
-                            <span className="text-xs text-muted-foreground">({researchData.target_companies.length})</span>
+                            <span className="text-sm font-semibold text-foreground">Target Companies ({researchData.target_companies.length})</span>
                           </div>
-                          <div className="grid gap-2">
+                          <div className="space-y-2">
                             {researchData.target_companies.map((c, i) => (
                               <div key={i} className="rounded-lg bg-secondary/60 border border-border px-3 py-2">
                                 <p className="text-sm font-semibold text-foreground">{c.name}</p>
@@ -1006,7 +1033,6 @@ export default function SearchTab() {
                         </div>
                       )}
 
-                      {/* EEA Signals */}
                       {researchData.eea_signals && researchData.eea_signals.length > 0 && (
                         <div className="glass-card p-4 space-y-3">
                           <div className="flex items-center gap-2">
@@ -1024,7 +1050,6 @@ export default function SearchTab() {
                         </div>
                       )}
 
-                      {/* Search Criteria */}
                       {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
                         <div className="glass-card p-4 space-y-3">
                           <div className="flex items-center gap-2">
@@ -1042,7 +1067,6 @@ export default function SearchTab() {
                   );
                 }
 
-                // Fallback: render full markdown as formatted text
                 return (
                   <div className="glass-card p-5" style={{ minHeight: 400 }}>
                     <p className="text-xs text-muted-foreground mb-3">Research Output</p>
@@ -1050,25 +1074,21 @@ export default function SearchTab() {
                       {researchData.raw?.split("\n").map((line, i) => {
                         const trimmed = line.trim();
                         if (!trimmed) return <br key={i} />;
-                        // Headers
                         if (trimmed.startsWith("### ")) return <p key={i} className="font-semibold text-foreground mt-4 mb-1">{trimmed.replace(/^###\s+/, "")}</p>;
                         if (trimmed.startsWith("## ")) return <p key={i} className="font-bold text-foreground text-base mt-5 mb-1">{trimmed.replace(/^##\s+/, "")}</p>;
                         if (trimmed.startsWith("# ")) return <p key={i} className="font-bold text-foreground text-lg mt-5 mb-2">{trimmed.replace(/^#\s+/, "")}</p>;
-                        // Bullet points
                         if (trimmed.match(/^[-•*]\s/)) return (
                           <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
                             <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                             <span>{trimmed.replace(/^[-•*]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
                           </div>
                         );
-                        // Numbered items
                         if (trimmed.match(/^\d+[.)]\s/)) return (
                           <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
                             <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                             <span>{trimmed.replace(/^\d+[.)]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
                           </div>
                         );
-                        // Bold inline
                         return <p key={i} className="my-0.5" dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") }} />;
                       })}
                     </div>
@@ -1202,6 +1222,19 @@ export default function SearchTab() {
       {mode === "search" && (
         <>
           <form id="search-form" onSubmit={handleSearch} className="glass-card p-5 space-y-4">
+            {/* Result count selector */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs shrink-0">Results</Label>
+              <select
+                value={searchCount}
+                onChange={(e) => setSearchCount(Number(e.target.value))}
+                className="px-2 py-1 rounded-md text-xs font-medium bg-secondary border border-border text-foreground"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="searchRole" className="text-xs">
                 Role / Title *
@@ -1279,7 +1312,10 @@ export default function SearchTab() {
                 <div className="flex items-center gap-2">
                   {batchEnriching ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Enriching {batchProgress} of {batchTotal}...</span>
+                      <span className="text-xs text-muted-foreground">
+                        Enriching {batchProgress} of {batchTotal}...
+                        {batchSkipped > 0 && ` (skipped ${batchSkipped} already enriched)`}
+                      </span>
                       <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={handleStopBatchEnrich}>
                         Stop
                       </Button>
@@ -1348,14 +1384,39 @@ export default function SearchTab() {
                     <div className="rounded-xl border border-border bg-card p-4 space-y-3 hover:border-[hsl(var(--border))]/60 transition-colors">
                       {/* Top row: Avatar + Name + Source badge */}
                       <div className="flex items-start gap-3">
-                        <div
-                          className="h-10 w-10 rounded-full flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `hsl(${hue}, 60%, 20%)` }}
-                        >
-                          <span className="text-sm font-bold" style={{ color: `hsl(${hue}, 70%, 70%)` }}>
-                            {getInitials(candidate.name)}
-                          </span>
-                        </div>
+                        {/* Avatar with photo fallback */}
+                        {candidate.pictureUrl ? (
+                          <img
+                            src={candidate.pictureUrl}
+                            alt={candidate.name}
+                            className="h-10 w-10 rounded-full object-cover shrink-0"
+                            onError={(e) => {
+                              // Replace with initials on error
+                              const target = e.currentTarget;
+                              const parent = target.parentElement;
+                              if (parent) {
+                                const div = document.createElement("div");
+                                div.className = "h-10 w-10 rounded-full flex items-center justify-center shrink-0";
+                                div.style.backgroundColor = `hsl(${hue}, 60%, 20%)`;
+                                const span = document.createElement("span");
+                                span.className = "text-sm font-bold";
+                                span.style.color = `hsl(${hue}, 70%, 70%)`;
+                                span.textContent = getInitials(candidate.name);
+                                div.appendChild(span);
+                                parent.replaceChild(div, target);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div
+                            className="h-10 w-10 rounded-full flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `hsl(${hue}, 60%, 20%)` }}
+                          >
+                            <span className="text-sm font-bold" style={{ color: `hsl(${hue}, 70%, 70%)` }}>
+                              {getInitials(candidate.name)}
+                            </span>
+                          </div>
+                        )}
 
                         <div className="flex-1 min-w-0">
                           {candidate.name ? (
@@ -1374,15 +1435,21 @@ export default function SearchTab() {
                           )}
                         </div>
 
-                        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${getSourceBadgeStyle(candidate.source)}`}>
-                          {getSourceLabel(candidate.source)}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${getSourceBadgeStyle(candidate.source)}`}>
+                            {getSourceLabel(candidate.source)}
+                          </span>
+                          {candidate.duplicate && (
+                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-[hsl(48,100%,45%)]/15 text-[hsl(48,100%,50%)] border border-[hsl(48,100%,45%)]/25">
+                              In pipeline
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Expanded content */}
                       {viewMode === "expanded" && (
                         <>
-                          {/* Bio */}
                           {candidate.description && (
                             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                               {candidate.description.length > 150
@@ -1391,7 +1458,6 @@ export default function SearchTab() {
                             </p>
                           )}
 
-                          {/* Signal pills */}
                           {candidate.signals.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
                               {candidate.signals.map((signal) => (
@@ -1407,6 +1473,17 @@ export default function SearchTab() {
                         </>
                       )}
 
+                      {/* Re-enrich confirmation */}
+                      {reEnrichConfirm === idx && (
+                        <div className="rounded-lg bg-secondary/80 border border-border p-3 space-y-2">
+                          <p className="text-xs text-foreground">This candidate was already enriched. Re-enrich?</p>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="text-xs flex-1" onClick={() => handleEnrichFromSearch(candidate, idx)}>Yes</Button>
+                            <Button size="sm" variant="secondary" className="text-xs flex-1" onClick={() => setReEnrichConfirm(null)}>No</Button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Action buttons */}
                       <div className="flex items-center gap-2">
                         <Button
@@ -1418,6 +1495,8 @@ export default function SearchTab() {
                         >
                           {enrichingIdx === idx ? (
                             <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Enriching...</>
+                          ) : candidate.enrichmentData ? (
+                            <><Check className="h-3 w-3 mr-1" /> Enriched</>
                           ) : (
                             <><Sparkles className="h-3 w-3 mr-1" /> Enrich</>
                           )}
@@ -1437,14 +1516,23 @@ export default function SearchTab() {
                           )}
                         </Button>
                         {candidate.url && (
-                          <a
-                            href={candidate.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors gap-1"
-                          >
-                            <ExternalLink className="h-3 w-3" /> View
-                          </a>
+                          <>
+                            <button
+                              onClick={() => handleCopyUrl(candidate.url)}
+                              className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                              title="Copy URL"
+                            >
+                              {copiedUrl === candidate.url ? <Check className="h-3 w-3 text-primary" /> : <Clipboard className="h-3 w-3" />}
+                            </button>
+                            <a
+                              href={candidate.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center h-8 px-3 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" /> View
+                            </a>
+                          </>
                         )}
                       </div>
                     </div>

@@ -23,6 +23,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          picture_url: string | null
           role: string | null
           score: number | null
           stage: string
@@ -36,6 +37,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          picture_url?: string | null
           role?: string | null
           score?: number | null
           stage?: string
@@ -49,12 +51,45 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          picture_url?: string | null
           role?: string | null
           score?: number | null
           stage?: string
           tags?: string[] | null
         }
         Relationships: []
+      }
+      outreach_history: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          created_by: string
+          id: string
+          message: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          message: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_history_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       research_tasks: {
         Row: {

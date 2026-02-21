@@ -8,8 +8,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log("SEARCH-CANDIDATES-V2-DEPLOYED", new Date().toISOString());
-
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -48,7 +46,7 @@ serve(async (req) => {
     }
 
     if (action === "create-webset") {
-      const { role, company, location, skills } = body;
+      const { role, company, location, skills, count } = body;
 
       if (!role) {
         return new Response(JSON.stringify({ error: "Role/Title is required" }), {
@@ -76,8 +74,9 @@ serve(async (req) => {
         criteria.push({ description: `This person has experience with ${skills}` });
       }
 
-      console.log("Creating Exa Webset:", JSON.stringify({ query, criteria }));
-      console.log("Request URL: https://api.exa.ai/websets/v0/websets");
+      const searchCount = typeof count === "number" && count > 0 ? Math.min(count, 100) : 20;
+
+      console.log("Creating Exa Webset:", JSON.stringify({ query, criteria, count: searchCount }));
 
       const response = await fetch("https://api.exa.ai/websets/v0/websets", {
         method: "POST",
@@ -88,14 +87,12 @@ serve(async (req) => {
         body: JSON.stringify({
           search: {
             query,
-            count: 20,
+            count: searchCount,
             entity: { type: "person" },
             criteria,
           },
         }),
       });
-
-      console.log("Create response status:", response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -125,11 +122,9 @@ serve(async (req) => {
       }
 
       const statusUrl = `https://api.exa.ai/websets/v0/websets/${websetId}`;
-      console.log("Polling webset status:", statusUrl);
       const statusRes = await fetch(statusUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
       });
-      console.log("Status response:", statusRes.status);
 
       if (!statusRes.ok) {
         const errorText = await statusRes.text();
@@ -143,11 +138,9 @@ serve(async (req) => {
       const statusData = await statusRes.json();
 
       const itemsUrl = `https://api.exa.ai/websets/v0/websets/${websetId}/items`;
-      console.log("Fetching items:", itemsUrl);
       const itemsRes = await fetch(itemsUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
       });
-      console.log("Items response:", itemsRes.status);
 
       if (!itemsRes.ok) {
         const errorText = await itemsRes.text();
@@ -163,94 +156,112 @@ serve(async (req) => {
 
       console.log(`Webset ${websetId}: status=${statusData.status}, items=${items.length}`);
 
-      return new Response(JSON.stringify({
-        websetStatus: statusData.status || "unknown",
-        items: items.map((item: any) => {
-          const desc = item.properties?.description || item.description || "";
+      // Map items first
+      const mappedItems = items.map((item: any) => {
+        const desc = item.properties?.description || item.description || "";
+        const person = item.properties?.person;
+        let name = person?.name || item.properties?.name || item.name || "";
+        if (!name && item.properties) {
+          name = item.properties.title || item.properties.full_name || item.properties.person_name || "";
+        }
 
-          // Log all available property keys for debugging
-          const propKeys = item.properties ? Object.keys(item.properties) : [];
-          if (propKeys.length > 0) {
-            console.log(`Item ${item.id} properties keys:`, propKeys, JSON.stringify(item.properties));
+        if (!name && desc) {
+          const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
+          if (isMatch) name = isMatch[1].trim();
+          if (!name) {
+            const commaAMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+(?:a|an)\s+/);
+            if (commaAMatch) name = commaAMatch[1].trim();
           }
-
-          // Extract name: try person object first, then item fields
-          const person = item.properties?.person;
-          let name = person?.name || item.properties?.name || item.name || "";
-          
-          // Also check other potential name fields in properties
-          if (!name && item.properties) {
-            name = item.properties.title || item.properties.full_name || item.properties.person_name || "";
+          if (!name) {
+            const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-\u2013|]\s+/);
+            if (dashMatch) name = dashMatch[1].trim();
           }
-
-          if (!name && desc) {
-            // Pattern 1: "Name is a Title"
-            const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
-            if (isMatch) {
-              name = isMatch[1].trim();
-            }
-            // Pattern 2: "Name, a/an Title"
-            if (!name) {
-              const commaAMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+(?:a|an)\s+/);
-              if (commaAMatch) name = commaAMatch[1].trim();
-            }
-            // Pattern 3: "Name - Title" or "Name | Title"
-            if (!name) {
-              const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–|]\s+/);
-              if (dashMatch) name = dashMatch[1].trim();
-            }
-            // Pattern 4: "Name works/currently/leads/manages..."
-            if (!name) {
-              const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
-              if (worksMatch) name = worksMatch[1].trim();
-            }
-            // Pattern 5: "Name, Title" (simple comma)
-            if (!name) {
-              const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
-              if (commaMatch) name = commaMatch[1].trim();
-            }
-            // Pattern 6: Name anywhere in first 200 chars with title context
-            if (!name) {
-              const snippet = desc.substring(0, 200);
-              const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
-              if (titleContextMatch) name = titleContextMatch[1].trim();
-            }
-            // Pattern 7: Short capitalized first line
-            if (!name) {
-              const firstLine = desc.split("\n")[0].trim();
-              if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
-                const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
-                const words = cleaned.split(/\s+/);
-                if (words.length >= 2 && words.length <= 4 && words.every((w: string) => /^[A-Z]/.test(w))) {
-                  name = cleaned;
-                }
+          if (!name) {
+            const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
+            if (worksMatch) name = worksMatch[1].trim();
+          }
+          if (!name) {
+            const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
+            if (commaMatch) name = commaMatch[1].trim();
+          }
+          if (!name) {
+            const snippet = desc.substring(0, 200);
+            const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
+            if (titleContextMatch) name = titleContextMatch[1].trim();
+          }
+          if (!name) {
+            const firstLine = desc.split("\n")[0].trim();
+            if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
+              const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
+              const words = cleaned.split(/\s+/);
+              if (words.length >= 2 && words.length <= 4 && words.every((w: string) => /^[A-Z]/.test(w))) {
+                name = cleaned;
               }
             }
           }
+        }
 
-          // Extract URL: try person LinkedIn, then item.url, then description
-          let url = person?.url || item.properties?.url || item.url || "";
-          if (url && !url.startsWith("http")) url = "https://" + url;
-          if (!url && desc) {
-            const linkedinMatch = desc.match(/linkedin\.com\/in\/[a-zA-Z0-9-]+/);
-            if (linkedinMatch) url = "https://" + linkedinMatch[0];
+        let url = person?.url || item.properties?.url || item.url || "";
+        if (url && !url.startsWith("http")) url = "https://" + url;
+        if (!url && desc) {
+          const linkedinMatch = desc.match(/linkedin\.com\/in\/[a-zA-Z0-9-]+/);
+          if (linkedinMatch) url = "https://" + linkedinMatch[0];
+        }
+
+        const pictureUrl = person?.pictureUrl || "";
+        const companyName = person?.company?.name || "";
+
+        return {
+          id: item.id || crypto.randomUUID(),
+          url,
+          name,
+          description: desc,
+          highlights: item.highlights || [],
+          source: item.sourceUrl || url || "",
+          pictureUrl,
+          person: person ? {
+            position: person.position || "",
+            company: companyName,
+            location: person.location || "",
+            pictureUrl,
+          } : undefined,
+        };
+      });
+
+      // Cross-search dedup: check candidates table for duplicates
+      const duplicateFlags: Record<string, boolean> = {};
+      if (mappedItems.length > 0) {
+        try {
+          // Check by linkedin URL
+          const urls = mappedItems.map((item: any) => item.url).filter((u: string) => u && u.includes("linkedin.com"));
+          if (urls.length > 0) {
+            const { data: existingByUrl } = await supabase
+              .from("candidates")
+              .select("enrichment_data, name, company");
+            if (existingByUrl) {
+              for (const item of mappedItems) {
+                const itemUrl = item.url;
+                const match = existingByUrl.find((c: any) => {
+                  const cLinkedin = c.enrichment_data?.contact_info?.linkedin || "";
+                  if (itemUrl && cLinkedin && (itemUrl === cLinkedin || itemUrl.includes(cLinkedin.replace(/https?:\/\//, "")) || cLinkedin.includes(itemUrl.replace(/https?:\/\//, "")))) return true;
+                  if (item.name && c.name && item.name.toLowerCase() === c.name.toLowerCase() && item.person?.company && c.company && item.person.company.toLowerCase() === c.company.toLowerCase()) return true;
+                  return false;
+                });
+                if (match) duplicateFlags[item.id] = true;
+              }
+            }
           }
+        } catch (err) {
+          console.error("Dedup check error:", err);
+        }
+      }
 
-          return {
-            id: item.id || crypto.randomUUID(),
-            url,
-            name,
-            description: desc,
-            highlights: item.highlights || [],
-            source: item.sourceUrl || url || "",
-            person: person ? {
-              position: person.position || "",
-              company: person.company?.name || "",
-              location: person.location || "",
-              pictureUrl: person.pictureUrl || "",
-            } : undefined,
-          };
-        }),
+      return new Response(JSON.stringify({
+        websetStatus: statusData.status || "unknown",
+        items: mappedItems.map((item: any) => ({
+          ...item,
+          duplicate: !!duplicateFlags[item.id],
+        })),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
