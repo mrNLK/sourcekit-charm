@@ -168,17 +168,61 @@ serve(async (req) => {
         items: items.map((item: any) => {
           const desc = item.properties?.description || item.description || "";
 
-          // Extract name from description patterns like "Name is a ..." or "Name -"
+          // Log all available property keys for debugging
+          const propKeys = item.properties ? Object.keys(item.properties) : [];
+          if (propKeys.length > 0) {
+            console.log(`Item ${item.id} properties keys:`, propKeys, JSON.stringify(item.properties));
+          }
+
+          // Extract name: try item fields first, then enrichment properties
           let name = item.properties?.name || item.name || "";
+          
+          // Also check other potential name fields in properties
+          if (!name && item.properties) {
+            name = item.properties.title || item.properties.full_name || item.properties.person_name || "";
+          }
+
           if (!name && desc) {
-            // Try "Name is a Title" pattern
+            // Pattern 1: "Name is a Title"
             const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
             if (isMatch) {
               name = isMatch[1].trim();
-            } else {
+            }
+            // Pattern 2: "Name, a/an Title"
+            if (!name) {
+              const commaAMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+(?:a|an)\s+/);
+              if (commaAMatch) name = commaAMatch[1].trim();
+            }
+            // Pattern 3: "Name - Title" or "Name | Title"
+            if (!name) {
+              const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–|]\s+/);
+              if (dashMatch) name = dashMatch[1].trim();
+            }
+            // Pattern 4: "Name works/currently/leads/manages..."
+            if (!name) {
+              const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
+              if (worksMatch) name = worksMatch[1].trim();
+            }
+            // Pattern 5: "Name, Title" (simple comma)
+            if (!name) {
+              const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
+              if (commaMatch) name = commaMatch[1].trim();
+            }
+            // Pattern 6: Name anywhere in first 200 chars with title context
+            if (!name) {
+              const snippet = desc.substring(0, 200);
+              const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
+              if (titleContextMatch) name = titleContextMatch[1].trim();
+            }
+            // Pattern 7: Short capitalized first line
+            if (!name) {
               const firstLine = desc.split("\n")[0].trim();
               if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
-                name = firstLine.replace(/[-|:;].*$/, "").trim();
+                const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
+                const words = cleaned.split(/\s+/);
+                if (words.length >= 2 && words.length <= 4 && words.every((w: string) => /^[A-Z]/.test(w))) {
+                  name = cleaned;
+                }
               }
             }
           }

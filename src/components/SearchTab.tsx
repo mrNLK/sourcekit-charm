@@ -180,15 +180,43 @@ function extractNameFromUrl(url: string): string | null {
 
 function parseNameFromDescription(desc: string): string {
   if (!desc) return "";
-  // "Name is a Title at Company"
+  const namePattern = /([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/;
+
+  // Pattern 1: "Name is a Title"
   const isMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+is\s+/);
   if (isMatch) return isMatch[1].trim();
-  // "Name - Title"
-  const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–]/);
+
+  // Pattern 2: "Name, a/an Title"
+  const commaAMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+(?:a|an)\s+/);
+  if (commaAMatch) return commaAMatch[1].trim();
+
+  // Pattern 3: "Name - Title" or "Name | Title"
+  const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–|]\s+/);
   if (dashMatch) return dashMatch[1].trim();
-  // "Name, Title"
+
+  // Pattern 4: "Name works/currently/leads/manages/specializes..."
+  const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
+  if (worksMatch) return worksMatch[1].trim();
+
+  // Pattern 5: "Name, Title" (simple comma)
   const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
   if (commaMatch) return commaMatch[1].trim();
+
+  // Pattern 6: Name anywhere in first 200 chars with title context
+  const snippet = desc.substring(0, 200);
+  const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
+  if (titleContextMatch) return titleContextMatch[1].trim();
+
+  // Pattern 7: Short first line as name
+  const firstLine = desc.split("\n")[0].trim();
+  if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
+    const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
+    const words = cleaned.split(/\s+/);
+    if (words.length >= 2 && words.length <= 4 && words.every(w => /^[A-Z]/.test(w))) {
+      return cleaned;
+    }
+  }
+
   return "";
 }
 
