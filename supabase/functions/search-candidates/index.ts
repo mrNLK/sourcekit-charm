@@ -78,23 +78,28 @@ serve(async (req) => {
         criteria.push({ description: `This person has experience with ${skills}` });
       }
 
+      const createUrl = "https://api.exa.ai/websets";
+      const createBody = {
+        search: {
+          query,
+          count: 20,
+          entity: { type: "person" },
+          criteria,
+        },
+      };
       console.log("Creating Exa Webset:", JSON.stringify({ query, criteria }));
+      console.log("Request URL:", createUrl);
 
-      const response = await fetch("https://api.exa.ai/websets", {
+      const response = await fetch(createUrl, {
         method: "POST",
         headers: {
           "x-api-key": exaApiKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          search: {
-            query,
-            count: 20,
-            entity: { type: "person" },
-            criteria,
-          },
-        }),
+        body: JSON.stringify(createBody),
       });
+
+      console.log("Create response status:", response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -125,12 +130,16 @@ serve(async (req) => {
       }
 
       // First check webset status
-      const statusRes = await fetch(`https://api.exa.ai/websets/${websetId}`, {
+      const statusUrl = `https://api.exa.ai/websets/${websetId}`;
+      console.log("Polling webset status:", statusUrl);
+      const statusRes = await fetch(statusUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
       });
+      console.log("Status response:", statusRes.status);
 
       if (!statusRes.ok) {
         const errorText = await statusRes.text();
+        console.error("Exa status API error:", statusRes.status, errorText);
         return new Response(JSON.stringify({ error: `Exa API error: ${statusRes.status}`, details: errorText }), {
           status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -140,12 +149,16 @@ serve(async (req) => {
       const statusData = await statusRes.json();
 
       // Fetch items
-      const itemsRes = await fetch(`https://api.exa.ai/websets/${websetId}/items`, {
+      const itemsUrl = `https://api.exa.ai/websets/${websetId}/items`;
+      console.log("Fetching items:", itemsUrl);
+      const itemsRes = await fetch(itemsUrl, {
         headers: { "x-api-key": exaApiKey, "Content-Type": "application/json" },
       });
+      console.log("Items response:", itemsRes.status);
 
       if (!itemsRes.ok) {
         const errorText = await itemsRes.text();
+        console.error("Exa items API error:", itemsRes.status, errorText);
         return new Response(JSON.stringify({ error: `Exa items API error: ${itemsRes.status}`, details: errorText }), {
           status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
