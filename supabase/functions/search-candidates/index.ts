@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -42,55 +43,72 @@ serve(async (req) => {
       });
     }
 
-    const apiUrl = Deno.env.get("ENRICHMENT_API_URL");
-    if (!apiUrl) {
-      return new Response(JSON.stringify({ error: "Search API URL not configured" }), {
+    const exaApiKey = Deno.env.get("EXA_API_KEY");
+    if (!exaApiKey) {
+      return new Response(JSON.stringify({ error: "Exa API key not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Build a natural language query from the fields
+    let query = role;
+    if (company) query += ` at ${company} companies`;
+    if (location) query += ` in ${location}`;
+    if (skills) query += ` with ${skills} experience`;
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
-      const response = await fetch(`${apiUrl}/search`, {
+      const response = await fetch("https://api.exa.ai/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${exaApiKey}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          role,
-          company: company || "",
-          location: location || "",
-          skills: skills || "",
+          query,
+          type: "neural",
+          numResults: 20,
+          contents: {
+            text: true,
+            highlights: true,
+          },
         }),
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
 
-      if (response.status === 404) {
-        return new Response(
-          JSON.stringify({ error: "search_not_configured" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
       if (!response.ok) {
         const errorText = await response.text();
         return new Response(
-          JSON.stringify({ error: `Search API error: ${response.status}`, details: errorText }),
+          JSON.stringify({ error: `Exa API error: ${response.status}`, details: errorText }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const data = await response.json();
-      return new Response(JSON.stringify(data), {
+
+      // Map Exa results to a consistent candidate format
+      const candidates = (data.results || []).map((r: any) => ({
+        name: r.title || "Unknown",
+        company: "",
+        role: "",
+        summary: r.text ? r.text.substring(0, 300) : "",
+        url: r.url || "",
+        highlights: r.highlights || [],
+        exa_id: r.id || "",
+      }));
+
+      return new Response(JSON.stringify(candidates), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } catch (fetchError: any) {
       clearTimeout(timeout);
       if (fetchError.name === "AbortError") {
-        return new Response(JSON.stringify({ error: "Search API timed out (60s)" }), {
+        return new Response(JSON.stringify({ error: "Exa API timed out (60s)" }), {
           status: 504,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
