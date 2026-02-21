@@ -134,10 +134,10 @@ serve(async (req) => {
       const pollData = await pollRes.json();
       console.log("Poll status:", pollData.status);
 
-      if (pollData.status === "completed") {
-        const resultText = pollData.output || pollData.result || JSON.stringify(pollData);
+      if (pollData.status === "complete" || pollData.status === "completed") {
+        const resultText = pollData.output || pollData.result || pollData.markdown || "";
         console.log("Research completed, result length:", String(resultText).length);
-        return new Response(JSON.stringify({ ...pollData, research_result: resultText }), {
+        return new Response(JSON.stringify({ ...pollData, research_output: resultText }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
