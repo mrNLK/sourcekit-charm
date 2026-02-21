@@ -175,17 +175,38 @@ serve(async (req) => {
       console.log("Poll status:", pollData.status);
 
       if (pollData.status === "completed" || pollData.status === "complete") {
-        const resultText = pollData.output || pollData.result || pollData.markdown || "";
-        console.log("Research completed, result length:", String(resultText).length);
+        // Fetch the actual result from the /result endpoint
+        const resultUrl = `https://api.parallel.ai/v1/tasks/runs/${run_id}/result`;
+        console.log("Task completed, fetching result from:", resultUrl);
+        const resultRes = await fetch(resultUrl, {
+          method: "GET",
+          headers: { "x-api-key": parallelApiKey },
+        });
+        let resultData: any = null;
+        let resultText = "";
+        if (resultRes.ok) {
+          resultData = await resultRes.json();
+          // The result may be a string or an object with output/text fields
+          if (typeof resultData === "string") {
+            resultText = resultData;
+          } else {
+            resultText = resultData.output || resultData.result || resultData.markdown || resultData.text || "";
+            if (typeof resultText !== "string") resultText = JSON.stringify(resultText);
+          }
+          console.log("Result fetched, text length:", resultText.length, "has basis:", !!resultData?.basis);
+        } else {
+          const errText = await resultRes.text();
+          console.error("Failed to fetch result:", resultRes.status, errText);
+        }
 
-        // Update research_tasks row
+        // Update research_tasks row with the full result data
         await supabase
           .from("research_tasks")
-          .update({ status: "completed", result: pollData })
+          .update({ status: "completed", result: resultData || pollData })
           .eq("run_id", run_id);
 
         return new Response(
-          JSON.stringify({ status: "completed", research_output: resultText, ...pollData }),
+          JSON.stringify({ status: "completed", research_output: resultText, result_data: resultData, ...pollData }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
