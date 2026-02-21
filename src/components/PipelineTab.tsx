@@ -157,7 +157,7 @@ export default function PipelineTab() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const fetchCandidates = async () => {
+  const fetchCandidates = async (retry = true) => {
     setLoading(true);
     const { data, error } = await supabase
       .from("candidates")
@@ -165,6 +165,11 @@ export default function PipelineTab() {
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {
+      // Retry once on auth errors
+      if (retry && (error.message?.includes("JWT") || error.code === "PGRST301")) {
+        const { error: refreshErr } = await supabase.auth.refreshSession();
+        if (!refreshErr) { fetchCandidates(false); return; }
+      }
       toast({ title: "Error loading candidates", description: error.message, variant: "destructive" });
     } else {
       const list = (data as Candidate[]) || [];
@@ -436,6 +441,31 @@ export default function PipelineTab() {
   const detailCandidate = detailId ? candidates.find((c) => c.id === detailId) : null;
 
   // --- Detail Panel ---
+  if (detailId && !detailCandidate) {
+    // Loading skeleton while candidate data resolves
+    return (
+      <div className="animate-slide-up space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-5 w-40 bg-muted animate-pulse rounded" />
+            <div className="h-3 w-28 bg-muted animate-pulse rounded" />
+          </div>
+        </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="glass-card p-4 space-y-2">
+            <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-full bg-muted animate-pulse rounded" />
+            <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (detailCandidate) {
     const c = detailCandidate;
     const enrichment = c.enrichment_data || {};

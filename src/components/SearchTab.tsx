@@ -589,6 +589,15 @@ export default function SearchTab({
       pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
     } catch (err: any) {
       console.error("Poll error:", err);
+      // Check for auth errors
+      if (err.message?.includes("JWT") || err.message?.includes("401") || err.message?.includes("token")) {
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          setSearchStatus("error");
+          toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+          return;
+        }
+      }
       pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
     }
   }, [toast, searchRole, searchCompany, searchLocation, searchSkills]);
@@ -705,6 +714,7 @@ export default function SearchTab({
         }
       } catch (err: any) {
         console.error(`Batch enrich failed for ${candidate.name}:`, err);
+        toast({ title: `Enrich failed: ${candidate.name}`, description: err.message || "API error", variant: "destructive" });
       }
       if (!batchCancelRef.current) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -817,6 +827,9 @@ export default function SearchTab({
       }
     } catch (err: any) {
       console.error("Research poll error:", err);
+      if (err.message?.includes("JWT") || err.message?.includes("401")) {
+        await supabase.auth.refreshSession();
+      }
     }
   }, [toast]);
 
