@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2 } from "lucide-react";
+import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2, Globe } from "lucide-react";
 
-const SETTING_KEYS = ["target_role", "target_company", "pitch", "slack_webhook_url"] as const;
+const SETTING_KEYS = ["target_role", "target_company", "pitch", "slack_webhook_url", "webhook_url"] as const;
 
 export default function SettingsTab() {
   const { user } = useAuth();
@@ -18,6 +18,7 @@ export default function SettingsTab() {
     target_company: "",
     pitch: "",
     slack_webhook_url: "",
+    webhook_url: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -140,6 +141,27 @@ export default function SettingsTab() {
               value={settings.slack_webhook_url}
               onChange={(e) => setSettings((s) => ({ ...s, slack_webhook_url: e.target.value }))}
               placeholder="https://hooks.slack.com/services/..."
+              className="bg-secondary border-border font-mono text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Webhook Integration */}
+      <div className="glass-card p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Globe className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold text-foreground">Webhook</p>
+        </div>
+        <p className="text-xs text-muted-foreground">POST candidate data to this URL when stage changes to Contacted.</p>
+        {!loading && (
+          <div className="space-y-1.5">
+            <Label htmlFor="webhookUrl" className="text-xs">Webhook URL</Label>
+            <Input
+              id="webhookUrl"
+              value={settings.webhook_url}
+              onChange={(e) => setSettings((s) => ({ ...s, webhook_url: e.target.value }))}
+              placeholder="https://your-api.com/webhook"
               className="bg-secondary border-border font-mono text-xs"
             />
           </div>
