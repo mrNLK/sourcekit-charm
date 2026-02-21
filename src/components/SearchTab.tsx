@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
@@ -17,6 +17,8 @@ interface SearchResult {
   company: string;
   role: string;
   summary?: string;
+  url?: string;
+  highlights?: string[];
 }
 
 interface ResearchData {
@@ -667,9 +669,24 @@ export default function SearchTab() {
                   <div className="glass-card p-4 space-y-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">{candidate.name || "Unknown"}</h3>
-                      <p className="font-mono text-xs text-primary">{candidate.company || ""}</p>
+                      {candidate.url && (
+                        <a href={candidate.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5">
+                          <ExternalLink className="h-3 w-3" />
+                          <span className="truncate max-w-[200px]">{candidate.url.replace(/^https?:\/\//, "")}</span>
+                        </a>
+                      )}
+                      {candidate.company && <p className="font-mono text-xs text-primary mt-1">{candidate.company}</p>}
                       {candidate.role && <p className="text-xs text-muted-foreground">{candidate.role}</p>}
-                      {candidate.summary && <p className="text-xs text-secondary-foreground mt-1 line-clamp-2">{candidate.summary}</p>}
+                      {candidate.summary && <p className="text-xs text-secondary-foreground mt-1 line-clamp-3">{candidate.summary}</p>}
+                      {candidate.highlights && candidate.highlights.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {candidate.highlights.slice(0, 2).map((h, i) => (
+                            <p key={i} className="text-xs text-muted-foreground italic border-l-2 border-primary/30 pl-2">
+                              {h.length > 150 ? h.substring(0, 150) + "…" : h}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" disabled={enrichingIdx === idx} onClick={() => handleEnrichFromSearch(candidate, idx)}>
