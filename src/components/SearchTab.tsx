@@ -20,6 +20,8 @@ interface SearchResult {
   summary?: string;
   url?: string;
   source?: string;
+  confidence?: "high" | "medium" | "low";
+  tags?: string[];
   autoEnriched?: boolean;
   enrichmentData?: any;
 }
@@ -801,12 +803,20 @@ export default function SearchTab() {
                     <div className="rounded-xl border border-[hsl(var(--border))] bg-[rgba(255,255,255,0.03)] p-4 space-y-3 hover:border-primary/40 transition-colors">
                       {/* Top row: Avatar + Name + Source badge */}
                       <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
+                        {/* Confidence dot + Avatar */}
+                        <div className="relative">
+                          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                            <span className="text-sm font-bold text-primary">{getInitials(candidate.name)}</span>
+                          </div>
+                          {candidate.confidence === "high" && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background" />
+                          )}
+                          {candidate.confidence === "medium" && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-yellow-500 border-2 border-background" />
+                          )}
                         </div>
 
-                        {/* Name + role */}
+                        {/* Name + role/headline */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-bold text-foreground truncate">{candidate.name || "Unknown"}</h3>
                           {candidate.role && (
@@ -831,10 +841,21 @@ export default function SearchTab() {
                       </div>
 
                       {/* Bio/summary */}
-                      {candidate.summary && (
+                      {candidate.summary && candidate.summary !== "View profile for details" && (
                         <p className="text-xs text-secondary-foreground line-clamp-2 leading-relaxed">
                           {candidate.summary}
                         </p>
+                      )}
+
+                      {/* Tags (GitHub stars, languages, etc.) */}
+                      {candidate.tags && candidate.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.tags.map((tag, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       )}
 
                       {/* Auto-enrichment data inline */}
