@@ -184,6 +184,7 @@ export default function PipelineTab() {
           targetRole,
           targetCompany,
           pitch,
+          enrichment_data: candidate.enrichment_data || undefined,
         },
       });
       if (error) throw error;

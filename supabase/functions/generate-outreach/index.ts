@@ -34,7 +34,7 @@ serve(async (req) => {
       });
     }
 
-    const { name, title, company, signals, targetRole, targetCompany, pitch } = await req.json();
+    const { name, title, company, signals, targetRole, targetCompany, pitch, enrichment_data } = await req.json();
 
     if (!name) {
       return new Response(JSON.stringify({ error: "Candidate name is required" }), {
@@ -47,16 +47,33 @@ serve(async (req) => {
       ? signals.join(", ")
       : "No specific signals available";
 
-    const prompt = `You are writing a short recruiting outreach message. Keep it under 100 words. Casual, human, no recruiter-speak. No "I came across your profile" or "I was impressed by". Just be direct about why you're reaching out and what makes the opportunity interesting.
+    // Build enrichment context from structured data
+    let enrichContext = "";
+    if (enrichment_data) {
+      const parts: string[] = [];
+      if (enrichment_data.summary) parts.push(`Summary: ${enrichment_data.summary}`);
+      if (enrichment_data.key_achievements?.length) parts.push(`Achievements: ${enrichment_data.key_achievements.join("; ")}`);
+      if (enrichment_data.skills?.length) parts.push(`Skills: ${enrichment_data.skills.slice(0, 8).join(", ")}`);
+      if (enrichment_data.evidence) {
+        const cited = Object.entries(enrichment_data.evidence)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
+        if (cited.length) parts.push(`Evidence: ${cited.join("; ")}`);
+      }
+      enrichContext = parts.join("\n");
+    }
+
+    const prompt = `You are writing a short recruiting outreach message. Keep it under 100 words. Casual, human, no recruiter-speak. No "I came across your profile" or "I was impressed by". Do not use the word "impressive" or "excited". Do not over-personalize. Sound like a real person, not a recruiter bot. Reference one specific achievement or signal from the candidate's background in the message.
 
 Candidate: ${name}
 Current role: ${title || "Unknown"} at ${company || "Unknown"}
 Key signals: ${signalText}
+${enrichContext ? `\nEnrichment data:\n${enrichContext}` : ""}
 Target role: ${targetRole || "Not specified"}
 Target company: ${targetCompany || "Not specified"}
 ${pitch ? `Pitch: ${pitch}` : ""}
 
-Write a short LinkedIn message or email. One paragraph. End with a soft ask like "open to a quick chat?" or "worth a conversation?"`;
+Write a short LinkedIn message or email. 3-4 sentences. End with a soft ask like "open to a quick chat?" or "worth a conversation?"`;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
