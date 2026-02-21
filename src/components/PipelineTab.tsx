@@ -39,6 +39,14 @@ interface Candidate {
   score: number | null;
   notes: string | null;
   tags: string[] | null;
+  picture_url?: string | null;
+}
+
+interface OutreachRecord {
+  id: string;
+  message: string;
+  created_at: string;
+  created_by: string;
 }
 
 // --- Webhook helper ---
@@ -73,6 +81,55 @@ async function fireWebhookIfContacted(candidate: Candidate, userId: string) {
   }
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function nameHash(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+}
+
+function avatarHue(name: string): number {
+  return nameHash(name) % 360;
+}
+
+function AvatarImg({ src, name, size = 8 }: { src?: string | null; name: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const hue = avatarHue(name);
+  const sizeClass = size === 8 ? "h-8 w-8" : size === 12 ? "h-12 w-12" : "h-10 w-10";
+  const textSize = size === 8 ? "text-[10px]" : size === 12 ? "text-sm" : "text-xs";
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className={`${sizeClass} rounded-full object-cover shrink-0`}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClass} rounded-full flex items-center justify-center shrink-0`}
+      style={{ backgroundColor: `hsl(${hue}, 60%, 20%)` }}
+    >
+      <span className={`${textSize} font-bold`} style={{ color: `hsl(${hue}, 70%, 70%)` }}>
+        {getInitials(name)}
+      </span>
+    </div>
+  );
+}
+
 export default function PipelineTab() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +149,10 @@ export default function PipelineTab() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   // Detail panel
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Outreach history
+  const [outreachHistory, setOutreachHistory] = useState<OutreachRecord[]>([]);
+  const [loadingOutreachHistory, setLoadingOutreachHistory] = useState(false);
+  const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null);
   const notesTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toast } = useToast();
   const { user } = useAuth();
@@ -124,6 +185,36 @@ export default function PipelineTab() {
 
   useEffect(() => { fetchCandidates(); }, []);
 
+  // Load outreach history when detail panel opens
+  useEffect(() => {
+    if (detailId) {
+      loadOutreachHistory(detailId);
+    }
+  }, [detailId]);
+
+  const loadOutreachHistory = async (candidateId: string) => {
+    setLoadingOutreachHistory(true);
+    const { data } = await supabase
+      .from("outreach_history")
+      .select("*")
+      .eq("candidate_id", candidateId)
+      .order("created_at", { ascending: false });
+    setOutreachHistory((data as OutreachRecord[]) || []);
+    setLoadingOutreachHistory(false);
+  };
+
+  const saveOutreachMessage = async (candidateId: string, message: string) => {
+    if (!user) return;
+    await supabase.from("outreach_history").insert({
+      candidate_id: candidateId,
+      message,
+      created_by: user.id,
+    } as any);
+    if (detailId === candidateId) {
+      loadOutreachHistory(candidateId);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("candidates").delete().eq("id", id);
     if (error) {
@@ -142,7 +233,6 @@ export default function PipelineTab() {
       toast({ title: "Update failed", description: error.message, variant: "destructive" });
     } else {
       setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, stage: newStage } : c));
-      // Fire webhook if moved to Contacted
       if (newStage === "contacted" && user) {
         const candidate = candidates.find((c) => c.id === id);
         if (candidate) fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
@@ -150,7 +240,6 @@ export default function PipelineTab() {
     }
   };
 
-  // --- Notes, Tags, Outreach handlers (unchanged logic) ---
   const handleNotesChange = (id: string, value: string) => {
     setNotesMap((prev) => ({ ...prev, [id]: value }));
     if (notesTimerRef.current[id]) clearTimeout(notesTimerRef.current[id]);
@@ -213,7 +302,12 @@ export default function PipelineTab() {
         body: { name: candidate.name, title: candidate.role || "", company: candidate.company, signals, targetRole, targetCompany, pitch, enrichment_data: candidate.enrichment_data || undefined },
       });
       if (error) throw error;
-      setOutreachModal({ id: candidate.id, message: data.message || "Failed to generate message.", loading: false });
+      const message = data.message || "Failed to generate message.";
+      setOutreachModal({ id: candidate.id, message, loading: false });
+      // Save to outreach history
+      if (message && message !== "Failed to generate message.") {
+        saveOutreachMessage(candidate.id, message);
+      }
     } catch (err: any) {
       toast({ title: "Outreach generation failed", description: err.message, variant: "destructive" });
       setOutreachModal(null);
@@ -245,7 +339,6 @@ export default function PipelineTab() {
     } catch { toast({ title: "Failed to share", variant: "destructive" }); }
   };
 
-  // --- Export helpers ---
   const buildCsvRows = (list: Candidate[]) => {
     const header = ["Name", "Company", "Title", "Score", "LinkedIn URL", "Stage", "Tags", "Notes", "Date Added"];
     const rows = list.map((c) => {
@@ -268,7 +361,6 @@ export default function PipelineTab() {
     toast({ title: "CSV exported" });
   };
 
-  // --- Bulk actions ---
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
@@ -289,7 +381,6 @@ export default function PipelineTab() {
       await supabase.from("candidates").update({ stage: targetStage } as any).eq("id", id);
     }
     setCandidates((prev) => prev.map((c) => selectedIds.has(c.id) ? { ...c, stage: targetStage } : c));
-    // Fire webhooks for contacted
     if (targetStage === "contacted" && user) {
       for (const id of ids) {
         const c = candidates.find((x) => x.id === id);
@@ -318,15 +409,12 @@ export default function PipelineTab() {
     setBulkDeleteConfirm(false);
   };
 
-  // Unique tags across all candidates
   const allTags = Array.from(new Set(candidates.flatMap((c) => c.tags || [])));
 
-  // Stage counts
   const stageCounts: Record<string, number> = {};
   for (const s of STAGES) stageCounts[s] = 0;
   for (const c of candidates) stageCounts[c.stage] = (stageCounts[c.stage] || 0) + 1;
 
-  // Filter pipeline
   const filtered = candidates.filter((c) => {
     const q = filter.toLowerCase();
     const matchesText = !q || c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || (c.role || "").toLowerCase().includes(q) || (c.tags || []).some((t) => t.toLowerCase().includes(q));
@@ -335,7 +423,6 @@ export default function PipelineTab() {
     return matchesText && matchesStage && matchesTags;
   });
 
-  // Sort
   const sorted = sortByScore
     ? [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
     : filtered;
@@ -346,7 +433,6 @@ export default function PipelineTab() {
     return STAGES[idx + 1];
   };
 
-  // Detail panel candidate
   const detailCandidate = detailId ? candidates.find((c) => c.id === detailId) : null;
 
   // --- Detail Panel ---
@@ -363,6 +449,7 @@ export default function PipelineTab() {
           <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
+          <AvatarImg src={c.picture_url} name={c.name} size={12} />
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-foreground truncate">{c.name}</h1>
             <p className="text-sm font-mono text-primary">{c.role || ""} {c.role && c.company ? "at" : ""} {c.company}</p>
@@ -494,6 +581,42 @@ export default function PipelineTab() {
             <Button size="sm" variant="outline" className="text-xs w-full" onClick={() => handleOutreach(c)} disabled={!c.enrichment_data}>
               <MessageSquare className="h-3.5 w-3.5 mr-1" /> Generate Outreach
             </Button>
+          )}
+        </div>
+
+        {/* Outreach History */}
+        <div className="glass-card p-4 space-y-2">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-primary" /> Outreach History ({outreachHistory.length})
+          </p>
+          {loadingOutreachHistory ? (
+            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
+          ) : outreachHistory.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No outreach messages generated yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {outreachHistory.map((oh) => (
+                <div key={oh.id} className="rounded-lg bg-secondary/60 border border-border p-3 space-y-1.5">
+                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{oh.message}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">
+                      {new Date(oh.created_at).toLocaleDateString()} {new Date(oh.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(oh.message);
+                        setCopiedHistoryId(oh.id);
+                        toast({ title: "Copied" });
+                        setTimeout(() => setCopiedHistoryId(null), 2000);
+                      }}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {copiedHistoryId === oh.id ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -709,6 +832,7 @@ export default function PipelineTab() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
+                          <AvatarImg src={c.picture_url} name={c.name} size={8} />
                           {c.score !== null && (
                             <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0" style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}>{c.score}</div>
                           )}
@@ -754,7 +878,6 @@ export default function PipelineTab() {
         <div className="fixed bottom-20 left-4 right-4 z-40 glass-card p-3 glow-accent flex items-center justify-between gap-2 animate-slide-up">
           <span className="text-xs font-semibold text-foreground shrink-0">{selectedIds.size} selected</span>
           <div className="flex items-center gap-2 overflow-x-auto">
-            {/* Move to dropdown */}
             <select
               defaultValue=""
               onChange={(e) => { if (e.target.value) handleBulkMove(e.target.value); e.target.value = ""; }}
