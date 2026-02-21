@@ -542,7 +542,70 @@ export default function SearchTab() {
     }
   };
 
-  // ---- Research mode ----
+  // ---- Research mode (async start + client polling) ----
+  const researchPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const researchPollCountRef = useRef(0);
+  const [researchRunId, setResearchRunId] = useState<string | null>(null);
+  const [researchProgress, setResearchProgress] = useState("");
+
+  // Cleanup research polling on unmount
+  useEffect(() => {
+    return () => {
+      if (researchPollRef.current) clearInterval(researchPollRef.current);
+    };
+  }, []);
+
+  const pollResearch = useCallback(async (runId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("research-role", {
+        body: { action: "poll", run_id: runId },
+      });
+      if (error) throw error;
+
+      researchPollCountRef.current++;
+      const count = researchPollCountRef.current;
+
+      // Update progress message
+      if (count < 6) setResearchProgress("Research started...");
+      else if (count < 15) setResearchProgress("Analyzing role...");
+      else if (count < 30) setResearchProgress("Mapping target companies...");
+      else setResearchProgress("Deep research in progress...");
+
+      if (data?.status === "completed") {
+        if (researchPollRef.current) clearInterval(researchPollRef.current);
+        researchPollRef.current = null;
+        setResearching(false);
+        setResearchRunId(null);
+        setResearchProgress("");
+        setResearchRaw(data);
+        setResearchData(parseResearchOutput(data));
+        return;
+      }
+
+      if (data?.status === "failed") {
+        if (researchPollRef.current) clearInterval(researchPollRef.current);
+        researchPollRef.current = null;
+        setResearching(false);
+        setResearchRunId(null);
+        setResearchProgress("");
+        toast({ title: "Research failed", description: data.error || "The research task failed.", variant: "destructive" });
+        return;
+      }
+
+      // Timeout after 60 attempts (5 min)
+      if (count >= 60) {
+        if (researchPollRef.current) clearInterval(researchPollRef.current);
+        researchPollRef.current = null;
+        setResearching(false);
+        setResearchProgress("");
+        toast({ title: "Research timed out", description: "The research took too long. Try again or use a simpler query.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      console.error("Research poll error:", err);
+      // Don't stop polling on transient errors
+    }
+  }, [toast]);
+
   const handleResearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const title = researchInput === "quick" ? resJobTitle.trim() : "";
@@ -556,22 +619,32 @@ export default function SearchTab() {
     setResearchData(null);
     setResearchRaw(null);
     setResearchSaved(false);
+    setResearchProgress("Starting research...");
 
     try {
       const { data, error } = await supabase.functions.invoke("research-role", {
         body: {
+          action: "start",
           job_title: title || "Role from job spec",
           company_name: companyVal || "Company from job spec",
           job_spec: specVal,
         },
       });
       if (error) throw error;
-      setResearchRaw(data);
-      setResearchData(parseResearchOutput(data));
+      if (data?.error) throw new Error(data.error);
+
+      const runId = data.taskId;
+      if (!runId) throw new Error("No task ID returned");
+
+      setResearchRunId(runId);
+      researchPollCountRef.current = 0;
+
+      // Start polling every 5 seconds
+      researchPollRef.current = setInterval(() => pollResearch(runId), 5000);
     } catch (err: any) {
-      toast({ title: "Research failed", description: err.message || "Could not complete research.", variant: "destructive" });
-    } finally {
       setResearching(false);
+      setResearchProgress("");
+      toast({ title: "Research failed", description: err.message || "Could not start research.", variant: "destructive" });
     }
   };
 
@@ -709,8 +782,8 @@ export default function SearchTab() {
           {researching && (
             <div className="glass-card p-8 flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm font-medium text-foreground">Researching role...</p>
-              <p className="text-xs text-muted-foreground">This may take 1-2 minutes</p>
+              <p className="text-sm font-medium text-foreground">{researchProgress || "Researching role..."}</p>
+              <p className="text-xs text-muted-foreground">This may take 2-5 minutes</p>
               <div className="w-full max-w-xs h-1 bg-secondary rounded-full overflow-hidden mt-2">
                 <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
               </div>

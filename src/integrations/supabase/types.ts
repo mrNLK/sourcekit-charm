@@ -56,6 +56,39 @@ export type Database = {
         }
         Relationships: []
       }
+      research_tasks: {
+        Row: {
+          company_name: string | null
+          created_at: string
+          created_by: string
+          id: string
+          job_title: string | null
+          result: Json | null
+          run_id: string
+          status: string
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          job_title?: string | null
+          result?: Json | null
+          run_id: string
+          status?: string
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          job_title?: string | null
+          result?: Json | null
+          run_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       role_research: {
         Row: {
           company_name: string
