@@ -58,10 +58,10 @@ serve(async (req) => {
 
     const researchPrompt = `For the role of ${job_title} at ${company_name}: 1) Identify 15-20 specific companies where top talent for this exact role currently works. Include direct competitors, adjacent companies, and research labs. For each company, explain WHY their employees are relevant. 2) Define what Evidence of Exceptional Ability (EEA) looks like for this role - specific publications, conference talks (NeurIPS, ICML, etc), open source projects, patents, awards, GitHub contributions, or other verifiable signals that put someone in the top 5-10% of practitioners. 3) List specific search keywords, skills, and criteria that would identify exceptional candidates for this role. If a full job spec is provided, use it for additional context: ${job_spec || "N/A"}`;
 
-    const requestUrl = "https://api.getparallel.com/v1/research";
+    const requestUrl = "https://api.getparallel.com/v1/tasks";
     const requestBody = JSON.stringify({
       input: researchPrompt,
-      processor: "pro",
+      output_type: "text",
     });
 
     console.log("Parallel API Request:", {
@@ -110,10 +110,11 @@ serve(async (req) => {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000));
 
-      const pollUrl = `https://api.getparallel.com/v1/research/${taskId}`;
+      const pollUrl = `https://api.getparallel.com/v1/tasks/${taskId}`;
       console.log(`Poll attempt ${i + 1}/${maxAttempts}: ${pollUrl}`);
 
       const pollRes = await fetch(pollUrl, {
+        method: "GET",
         headers: { Authorization: `Bearer ${parallelApiKey}` },
       });
 
