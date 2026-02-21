@@ -494,6 +494,7 @@ export default function SearchTab() {
         const results: SearchResult[] = items.map((item: any) => {
           const url = item.url || "";
           const desc = item.description || "";
+          const person = item.person;
           const rawName = item.name || parseNameFromDescription(desc) || extractNameFromUrl(url) || "";
           const meta = parseMetadata(desc);
           const signals = extractSignals(desc);
@@ -503,9 +504,9 @@ export default function SearchTab() {
             url,
             description: desc,
             source: detectSource(url, desc),
-            company: meta.company,
-            role: meta.title,
-            location: meta.location,
+            company: person?.company || meta.company,
+            role: person?.position || meta.title,
+            location: person?.location || meta.location,
             headline: meta.headline,
             signals,
           };
