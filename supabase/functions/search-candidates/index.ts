@@ -51,11 +51,11 @@ serve(async (req) => {
       });
     }
 
-    // Build a natural language query from the fields
-    let query = role;
-    if (company) query += ` at ${company} companies`;
-    if (location) query += ` in ${location}`;
-    if (skills) query += ` with ${skills} experience`;
+    // Build a people-focused query
+    let query = `LinkedIn profile ${role}`;
+    if (company) query += ` at ${company}`;
+    if (location) query += ` ${location}`;
+    if (skills) query += ` ${skills}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
@@ -70,10 +70,16 @@ serve(async (req) => {
         body: JSON.stringify({
           query,
           type: "neural",
-          numResults: 20,
+          numResults: 25,
+          includeDomains: [
+            "linkedin.com/in",
+            "github.com",
+            "scholar.google.com",
+            "twitter.com",
+            "x.com",
+          ],
           contents: {
             text: true,
-            highlights: true,
           },
         }),
         signal: controller.signal,
@@ -91,16 +97,31 @@ serve(async (req) => {
 
       const data = await response.json();
 
-      // Map Exa results to a consistent candidate format
-      const candidates = (data.results || []).map((r: any) => ({
-        name: r.title || "Unknown",
-        company: "",
-        role: "",
-        summary: r.text ? r.text.substring(0, 300) : "",
-        url: r.url || "",
-        highlights: r.highlights || [],
-        exa_id: r.id || "",
-      }));
+      // Map Exa results to candidate format with source detection
+      const candidates = (data.results || []).map((r: any) => {
+        const url = r.url || "";
+        let source = "other";
+        if (url.includes("linkedin.com")) source = "linkedin";
+        else if (url.includes("github.com")) source = "github";
+        else if (url.includes("scholar.google.com")) source = "scholar";
+        else if (url.includes("twitter.com") || url.includes("x.com")) source = "twitter";
+
+        // Clean up name from LinkedIn titles
+        let name = r.title || "Unknown";
+        if (source === "linkedin") {
+          name = name.replace(/\s*[\-\|–]\s*LinkedIn.*$/i, "").trim();
+        }
+
+        return {
+          name,
+          company: "",
+          role: "",
+          summary: r.text ? r.text.substring(0, 300) : "",
+          url,
+          source,
+          exa_id: r.id || "",
+        };
+      });
 
       return new Response(JSON.stringify(candidates), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
