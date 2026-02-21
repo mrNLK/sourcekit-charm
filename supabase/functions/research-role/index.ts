@@ -97,8 +97,8 @@ serve(async (req) => {
     }
 
     const task = await createRes.json();
-    const taskId = task.id;
-    console.log("Parallel API task created:", JSON.stringify(task));
+    const taskId = task.run_id || task.id;
+    console.log("Parallel API task created:", JSON.stringify(task), "Using taskId:", taskId);
 
     if (!taskId) {
       return new Response(
@@ -135,7 +135,9 @@ serve(async (req) => {
       console.log("Poll status:", pollData.status);
 
       if (pollData.status === "completed") {
-        return new Response(JSON.stringify(pollData), {
+        const resultText = pollData.output || pollData.result || JSON.stringify(pollData);
+        console.log("Research completed, result length:", String(resultText).length);
+        return new Response(JSON.stringify({ ...pollData, research_result: resultText }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
