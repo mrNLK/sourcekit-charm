@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.search-candidates]
 verify_jwt = false
+
+[functions.generate-outreach]
+verify_jwt = false

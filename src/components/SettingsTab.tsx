@@ -1,12 +1,69 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut } from "@/lib/supabase-helpers";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Users, Server } from "lucide-react";
+import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2 } from "lucide-react";
+
+const SETTING_KEYS = ["target_role", "target_company", "pitch", "slack_webhook_url"] as const;
 
 export default function SettingsTab() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [settings, setSettings] = useState<Record<string, string>>({
+    target_role: "",
+    target_company: "",
+    pitch: "",
+    slack_webhook_url: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const load = async () => {
+      const { data } = await supabase
+        .from("settings")
+        .select("key, value")
+        .eq("user_id", user.id);
+      if (data) {
+        const map: Record<string, string> = { ...settings };
+        for (const row of data as any[]) {
+          if (row.key in map) map[row.key] = row.value || "";
+        }
+        setSettings(map);
+      }
+      setLoading(false);
+    };
+    load();
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    setSaved(false);
+
+    for (const key of SETTING_KEYS) {
+      const value = settings[key] || null;
+      const { error } = await supabase
+        .from("settings")
+        .upsert({ user_id: user.id, key, value, updated_at: new Date().toISOString() } as any, { onConflict: "user_id,key" });
+      if (error) {
+        toast({ title: "Save failed", description: error.message, variant: "destructive" });
+        setSaving(false);
+        return;
+      }
+    }
+
+    setSaving(false);
+    setSaved(true);
+    toast({ title: "Settings saved" });
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   const handleLogout = async () => {
     const { error } = await signOut();
@@ -22,19 +79,98 @@ export default function SettingsTab() {
         <p className="text-sm text-muted-foreground">App configuration</p>
       </div>
 
+      {/* Role Context */}
+      <div className="glass-card p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Target className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold text-foreground">Role Context</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Used for outreach message generation.</p>
+
+        {loading ? (
+          <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="targetRole" className="text-xs">Target Role</Label>
+              <Input
+                id="targetRole"
+                value={settings.target_role}
+                onChange={(e) => setSettings((s) => ({ ...s, target_role: e.target.value }))}
+                placeholder="Staff ML Engineer"
+                className="bg-secondary border-border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="targetCompany" className="text-xs">Target Company</Label>
+              <Input
+                id="targetCompany"
+                value={settings.target_company}
+                onChange={(e) => setSettings((s) => ({ ...s, target_company: e.target.value }))}
+                placeholder="Anthropic"
+                className="bg-secondary border-border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pitch" className="text-xs">One-Line Pitch</Label>
+              <Input
+                id="pitch"
+                value={settings.pitch}
+                onChange={(e) => setSettings((s) => ({ ...s, pitch: e.target.value }))}
+                placeholder="Building the next generation of AI safety tools"
+                className="bg-secondary border-border"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Slack Integration */}
+      <div className="glass-card p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <MessageSquare className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold text-foreground">Slack Integration</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Add a webhook URL to share candidates to a Slack channel.</p>
+        {!loading && (
+          <div className="space-y-1.5">
+            <Label htmlFor="slackWebhook" className="text-xs">Slack Webhook URL</Label>
+            <Input
+              id="slackWebhook"
+              value={settings.slack_webhook_url}
+              onChange={(e) => setSettings((s) => ({ ...s, slack_webhook_url: e.target.value }))}
+              placeholder="https://hooks.slack.com/services/..."
+              className="bg-secondary border-border font-mono text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Save button */}
+      {!loading && (
+        <Button className="w-full glow-accent" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
+          ) : saved ? (
+            <><Check className="h-4 w-4 mr-2" /> Saved</>
+          ) : (
+            <><Save className="h-4 w-4 mr-2" /> Save Settings</>
+          )}
+        </Button>
+      )}
+
+      {/* Enrichment API info */}
       <div className="glass-card p-5 space-y-4">
         <div className="flex items-start gap-3">
           <Server className="h-5 w-5 text-primary mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-foreground">Enrichment API</p>
             <p className="text-xs text-muted-foreground font-mono">Configured via backend secret</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              The enrichment API URL is securely stored as a backend secret and used by the server-side function.
-            </p>
           </div>
         </div>
       </div>
 
+      {/* Team info */}
       <div className="glass-card p-5 space-y-4">
         <div className="flex items-start gap-3">
           <Users className="h-5 w-5 text-primary mt-0.5" />
@@ -45,6 +181,7 @@ export default function SettingsTab() {
         </div>
       </div>
 
+      {/* Account */}
       <div className="glass-card p-5 space-y-3">
         <p className="text-sm text-muted-foreground">Signed in as</p>
         <p className="text-sm font-mono text-foreground truncate">{user?.email}</p>

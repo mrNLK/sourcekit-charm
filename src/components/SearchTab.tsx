@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw } from "lucide-react";
+import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw, Trash2, Clock, Play, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
@@ -273,15 +273,69 @@ export default function SearchTab() {
   const [researchSaved, setResearchSaved] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["companies", "eea", "criteria"]));
 
+  // Search history state
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+
+  // Duplicate detection state
+  const [duplicateModal, setDuplicateModal] = useState<{
+    existing: any;
+    newCandidate: SearchResult;
+    newIdx: number;
+  } | null>(null);
+
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Cleanup polling on unmount
+  // Cleanup polling on unmount + load search history
   useEffect(() => {
+    loadSearchHistory();
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
+
+  const loadSearchHistory = async () => {
+    setLoadingHistory(true);
+    const { data } = await supabase
+      .from("search_history")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    setSearchHistory((data as any[]) || []);
+    setLoadingHistory(false);
+  };
+
+  const saveSearchHistory = async (params: any, resultCount: number) => {
+    if (!user) return;
+    await supabase.from("search_history").insert({
+      query_params: params,
+      result_count: resultCount,
+      created_by: user.id,
+    } as any);
+    loadSearchHistory();
+  };
+
+  const deleteSearchHistory = async (id: string) => {
+    setDeletingHistoryId(id);
+    await supabase.from("search_history").delete().eq("id", id);
+    setSearchHistory((prev) => prev.filter((h) => h.id !== id));
+    setDeletingHistoryId(null);
+  };
+
+  const rerunSearch = (params: any) => {
+    setSearchRole(params.role || "");
+    setSearchCompany(params.company || "");
+    setSearchLocation(params.location || "");
+    setSearchSkills(params.skills || "");
+    setMode("search");
+    // Auto-submit after state settles
+    setTimeout(() => {
+      const form = document.getElementById("search-form") as HTMLFormElement;
+      if (form) form.requestSubmit();
+    }, 100);
+  };
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => {
@@ -372,6 +426,11 @@ export default function SearchTab() {
         });
         setSearchResults(sortResults(results));
         setSearchStatus("done");
+        // Save to search history
+        saveSearchHistory(
+          { role: searchRole, company: searchCompany, location: searchLocation, skills: searchSkills },
+          results.length
+        );
         return;
       }
 
@@ -448,8 +507,23 @@ export default function SearchTab() {
     }
   };
 
-  const handleSaveFromSearch = async (candidate: SearchResult, idx: number) => {
+  const handleSaveFromSearch = async (candidate: SearchResult, idx: number, force = false) => {
     if (!user) return;
+
+    // Duplicate check
+    if (!force) {
+      const { data: existing } = await supabase
+        .from("candidates")
+        .select("id, name, company, stage, created_at")
+        .ilike("name", candidate.name)
+        .ilike("company", candidate.company || "")
+        .limit(1);
+      if (existing && existing.length > 0) {
+        setDuplicateModal({ existing: existing[0], newCandidate: candidate, newIdx: idx });
+        return;
+      }
+    }
+
     setSavingIdx(idx);
     const enrichData = enrichedIdx === idx ? enrichedResult : candidate.enrichmentData || null;
     const { error } = await supabase.from("candidates").insert({
@@ -796,7 +870,7 @@ export default function SearchTab() {
       {/* ===== SEARCH MODE ===== */}
       {mode === "search" && (
         <>
-          <form onSubmit={handleSearch} className="glass-card p-5 space-y-4">
+          <form id="search-form" onSubmit={handleSearch} className="glass-card p-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="searchRole" className="text-xs">Role / Title *</Label>
               <Input id="searchRole" value={searchRole} onChange={(e) => setSearchRole(e.target.value)} placeholder="Staff Engineer, Product Manager..." required className="bg-secondary border-border" />
@@ -1022,6 +1096,85 @@ export default function SearchTab() {
             </div>
           )}
         </>
+      )}
+
+          {/* Search History */}
+          {mode === "search" && searchStatus === "idle" && searchResults.length === 0 && (
+            <div className="space-y-3">
+              {searchHistory.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-semibold text-foreground">Recent Searches</p>
+                  </div>
+                  {searchHistory.map((h) => {
+                    const params = h.query_params || {};
+                    const label = [params.role, params.skills, params.location].filter(Boolean).join(", ");
+                    return (
+                      <div key={h.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-foreground font-medium truncate">{label || "Search"}</p>
+                          <span className="text-xs text-muted-foreground ml-2">({h.result_count})</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(h.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="text-xs flex-1" onClick={() => rerunSearch(params)}>
+                            <Play className="h-3 w-3 mr-1" /> Re-run
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs text-destructive border-destructive/30"
+                            onClick={() => deleteSearchHistory(h.id)}
+                            disabled={deletingHistoryId === h.id}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+
+      {/* Duplicate Detection Modal */}
+      {duplicateModal && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDuplicateModal(null)}>
+          <div className="glass-card p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-[hsl(48,100%,45%)]" />
+              <h3 className="text-sm font-bold text-foreground">Possible Duplicate</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">This candidate may already be in your pipeline:</p>
+            <div className="rounded-lg border border-border bg-secondary p-3 space-y-1">
+              <p className="text-sm font-semibold text-foreground">{duplicateModal.existing.name}</p>
+              <p className="text-xs text-primary font-mono">{duplicateModal.existing.company}</p>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>Stage: {duplicateModal.existing.stage}</span>
+                <span>Added: {new Date(duplicateModal.existing.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 text-xs"
+                onClick={() => {
+                  setDuplicateModal(null);
+                  handleSaveFromSearch(duplicateModal.newCandidate, duplicateModal.newIdx, true);
+                }}
+              >
+                Save Anyway
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => setDuplicateModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
