@@ -623,7 +623,7 @@ export default function SearchTab({
   const handleSave = async () => {
     if (!user || !result) return;
     setSaving(true);
-    const { error } = await supabase.from("watchlist").insert({
+    const { error } = await (supabase as any).from("watchlist").insert({
       name: name.trim(),
       company: company.trim(),
       role: role.trim() || null,
