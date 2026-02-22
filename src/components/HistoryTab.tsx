@@ -4,9 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface HistoryEntry {
   id: string;
-  query: string;
-  job_title: string;
-  company: string;
+  query_params: any;
+  action_type: string;
   result_count: number;
   created_at: string;
 }
@@ -85,8 +84,8 @@ export default function HistoryTab() {
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
-                {entry.job_title || entry.query || "Untitled search"}
-                {entry.company ? ` at ${entry.company}` : ""}
+                {entry.query_params?.role || entry.query_params?.query || "Search"}
+                {entry.query_params?.company ? ` at ${entry.query_params.company}` : ""}
               </p>
               <p className="text-xs text-muted-foreground">
                 {formatDate(entry.created_at)}
