@@ -6,8 +6,8 @@ interface WatchlistEntry {
   id: string;
   name: string;
   company: string;
-  role: string;
-  url: string;
+  title: string;
+  linkedin_url: string;
   notes: string;
   created_at: string;
 }
@@ -16,7 +16,7 @@ export default function WatchlistTab() {
   const [items, setItems] = useState<WatchlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", company: "", role: "", url: "", notes: "" });
+  const [form, setForm] = useState({ name: "", company: "", title: "", linkedin_url: "", notes: "" });
 
   useEffect(() => {
     loadWatchlist();
@@ -24,21 +24,21 @@ export default function WatchlistTab() {
 
   const loadWatchlist = async () => {
     setLoading(true);
-    const { data } = await (supabase as any).from("watchlist").select("*").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("candidates").select("*").order("created_at", { ascending: false });
     if (data) setItems(data);
     setLoading(false);
   };
 
   const addItem = async () => {
     if (!form.name.trim()) return;
-    await (supabase as any).from("watchlist").insert([form]);
-    setForm({ name: "", company: "", role: "", url: "", notes: "" });
+    await (supabase as any).from("candidates").insert([form]);
+    setForm({ name: "", company: "", title: "", linkedin_url: "", notes: "" });
     setShowAdd(false);
     loadWatchlist();
   };
 
   const removeItem = async (id: string) => {
-    await (supabase as any).from("watchlist").delete().eq("id", id);
+    await (supabase as any).from("candidates").delete().eq("id", id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
@@ -89,14 +89,14 @@ export default function WatchlistTab() {
             />
             <input
               placeholder="Role"
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
             <input
               placeholder="LinkedIn URL"
-              value={form.url}
-              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              value={form.linkedin_url}
+              onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
           </div>
@@ -143,15 +143,15 @@ export default function WatchlistTab() {
                   {item.company ? ` at ${item.company}` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {item.role || "No role specified"}
+                  {item.title || "No role specified"}
                   {item.notes ? ` \u2022 ${item.notes}` : ""}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-              {item.url && (
+              {item.linkedin_url && (
                 <a
-                  href={item.url}
+                  href={item.linkedin_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-1.5 text-muted-foreground hover:text-primary"
