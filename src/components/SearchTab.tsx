@@ -123,6 +123,20 @@ function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[
   };
 }
 
+function getRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const d = new Date(dateStr).getTime();
+  const diff = now - d;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function getInitials(name: string): string {
   return name
     .split(/\s+/)
@@ -358,6 +372,7 @@ export default function SearchTab({
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   // Settings defaults
   const [settingsRole, setSettingsRole] = useState("");
@@ -432,17 +447,19 @@ export default function SearchTab({
       .from("search_history")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(20);
     setSearchHistory((data as any[]) || []);
     setLoadingHistory(false);
   };
 
-  const saveSearchHistory = async (params: any, resultCount: number) => {
+  const saveSearchHistory = async (params: any, resultCount: number, actionType: string = "search", metadata?: any) => {
     if (!user) return;
     await supabase.from("search_history").insert({
       query_params: params,
       result_count: resultCount,
       created_by: user.id,
+      action_type: actionType,
+      metadata: metadata || params,
     } as any);
     loadSearchHistory();
   };
@@ -805,6 +822,15 @@ export default function SearchTab({
             .map((c) => `${jobTitle} at ${c.name}`);
           setSuggestedSearches(suggestions);
         }
+        // Log research to search history
+        const researchQuery = resJobTitle.trim() ? `${resJobTitle.trim()} at ${resCompanyName.trim()}` : "Job spec research";
+        const rawSummary = parsed.raw ? parsed.raw.substring(0, 500) : "";
+        saveSearchHistory(
+          { role: resJobTitle.trim(), company: resCompanyName.trim() },
+          0,
+          "research",
+          { role: resJobTitle.trim(), company: resCompanyName.trim(), summary: rawSummary }
+        );
         return;
       }
 
@@ -1564,45 +1590,72 @@ export default function SearchTab({
         </>
       )}
 
-          {/* Search History */}
-          {mode === "search" && searchStatus === "idle" && searchResults.length === 0 && (
-            <div className="space-y-3">
-              {searchHistory.length > 0 && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold text-foreground">Recent Searches</p>
-                  </div>
+          {/* Search History - collapsible */}
+          {searchHistory.length > 0 && (
+            <div className="glass-card overflow-hidden">
+              <button
+                onClick={() => setHistoryExpanded(!historyExpanded)}
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">History ({searchHistory.length})</span>
+                </div>
+                {historyExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {historyExpanded && (
+                <div className="px-4 pb-4 space-y-2">
                   {searchHistory.map((h) => {
                     const params = h.query_params || {};
-                    const label = [params.role, params.skills, params.location].filter(Boolean).join(", ");
+                    const meta = h.metadata || params;
+                    const isResearch = h.action_type === "research";
+                    const queryText = isResearch
+                      ? `${meta.role || ""}${meta.company ? ` at ${meta.company}` : ""}`
+                      : [params.role, params.company, params.skills].filter(Boolean).join(", ");
+                    const truncated = queryText.length > 80 ? queryText.substring(0, 80) + "..." : queryText;
+                    const timeAgo = getRelativeTime(h.created_at);
+
                     return (
-                      <div key={h.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-foreground font-medium truncate">{label || "Search"}</p>
-                          <span className="text-xs text-muted-foreground ml-2">({h.result_count})</span>
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          if (isResearch) {
+                            setResJobTitle(meta.role || "");
+                            setResCompanyName(meta.company || "");
+                            setMode("research");
+                          } else {
+                            setSearchRole(params.role || "");
+                            setSearchCompany(params.company || "");
+                            setSearchLocation(params.location || "");
+                            setSearchSkills(params.skills || "");
+                            setMode("search");
+                            setTimeout(() => {
+                              const form = document.getElementById("search-form") as HTMLFormElement;
+                              if (form) form.requestSubmit();
+                            }, 100);
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 rounded-lg bg-secondary/60 border border-border p-3 text-left hover:border-primary/30 transition-colors"
+                      >
+                        {isResearch ? <FileText className="h-4 w-4 text-primary shrink-0" /> : <Search className="h-4 w-4 text-muted-foreground shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">{truncated || "Search"}</p>
+                          <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(h.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </p>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="text-xs flex-1" onClick={() => rerunSearch(params)}>
-                            <Play className="h-3 w-3 mr-1" /> Re-run
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs text-destructive border-destructive/30"
-                            onClick={() => deleteSearchHistory(h.id)}
-                            disabled={deletingHistoryId === h.id}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
+                        {!isResearch && h.result_count > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0">
+                            {h.result_count}
+                          </span>
+                        )}
+                        {isResearch && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border shrink-0">
+                            Research
+                          </span>
+                        )}
+                      </button>
                     );
                   })}
-                </>
+                </div>
               )}
             </div>
           )}

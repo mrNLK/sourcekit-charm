@@ -49,6 +49,46 @@ interface OutreachRecord {
   created_by: string;
 }
 
+interface CandidateNote {
+  id: string;
+  candidate_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
+interface StageChange {
+  id: string;
+  candidate_id: string;
+  user_id: string;
+  from_stage: string;
+  to_stage: string;
+  created_at: string;
+}
+
+interface TimelineEvent {
+  id: string;
+  type: "stage_change" | "outreach" | "added";
+  created_at: string;
+  from_stage?: string;
+  to_stage?: string;
+  message?: string;
+}
+
+function getRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const d = new Date(dateStr).getTime();
+  const diff = now - d;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 // --- Webhook helper ---
 async function fireWebhookIfContacted(candidate: Candidate, userId: string) {
   try {
@@ -153,6 +193,16 @@ export default function PipelineTab() {
   const [outreachHistory, setOutreachHistory] = useState<OutreachRecord[]>([]);
   const [loadingOutreachHistory, setLoadingOutreachHistory] = useState(false);
   const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null);
+  // Candidate notes state
+  const [candidateNotes, setCandidateNotes] = useState<CandidateNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  // Stage changes / timeline state
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [timelineLimit, setTimelineLimit] = useState(20);
+  const [totalTimelineCount, setTotalTimelineCount] = useState(0);
   const notesTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toast } = useToast();
   const { user } = useAuth();
@@ -190,10 +240,14 @@ export default function PipelineTab() {
 
   useEffect(() => { fetchCandidates(); }, []);
 
-  // Load outreach history when detail panel opens
+  // Load outreach history, notes, and timeline when detail panel opens
   useEffect(() => {
     if (detailId) {
       loadOutreachHistory(detailId);
+      loadCandidateNotes(detailId);
+      loadTimeline(detailId);
+      setNewNoteText("");
+      setTimelineLimit(20);
     }
   }, [detailId]);
 
@@ -220,6 +274,100 @@ export default function PipelineTab() {
     }
   };
 
+  const loadCandidateNotes = async (candidateId: string) => {
+    setLoadingNotes(true);
+    const { data } = await supabase
+      .from("candidate_notes")
+      .select("*")
+      .eq("candidate_id", candidateId)
+      .order("created_at", { ascending: false });
+    setCandidateNotes((data as CandidateNote[]) || []);
+    setLoadingNotes(false);
+  };
+
+  const addNote = async (candidateId: string) => {
+    if (!user || !newNoteText.trim()) return;
+    setAddingNote(true);
+    const { error } = await supabase.from("candidate_notes").insert({
+      candidate_id: candidateId,
+      user_id: user.id,
+      content: newNoteText.trim(),
+    } as any);
+    setAddingNote(false);
+    if (error) {
+      toast({ title: "Failed to add note", description: error.message, variant: "destructive" });
+    } else {
+      setNewNoteText("");
+      loadCandidateNotes(candidateId);
+    }
+  };
+
+  const deleteNote = async (noteId: string, candidateId: string) => {
+    const { error } = await supabase.from("candidate_notes").delete().eq("id", noteId);
+    if (!error) {
+      loadCandidateNotes(candidateId);
+      toast({ title: "Note deleted" });
+    }
+  };
+
+  const migrateNote = async (candidateId: string, legacyNote: string) => {
+    if (!user) return;
+    await supabase.from("candidate_notes").insert({
+      candidate_id: candidateId,
+      user_id: user.id,
+      content: legacyNote,
+    } as any);
+    await supabase.from("candidates").update({ notes: null } as any).eq("id", candidateId);
+    setCandidates((prev) => prev.map((c) => c.id === candidateId ? { ...c, notes: null } : c));
+    setNotesMap((prev) => ({ ...prev, [candidateId]: "" }));
+    loadCandidateNotes(candidateId);
+    toast({ title: "Note migrated" });
+  };
+
+  const recordStageChange = async (candidateId: string, fromStage: string, toStage: string) => {
+    if (!user) return;
+    await supabase.from("stage_changes").insert({
+      candidate_id: candidateId,
+      user_id: user.id,
+      from_stage: fromStage,
+      to_stage: toStage,
+    } as any);
+    if (detailId === candidateId) loadTimeline(candidateId);
+  };
+
+  const loadTimeline = async (candidateId: string) => {
+    setLoadingTimeline(true);
+    const [stageRes, outreachRes] = await Promise.all([
+      supabase.from("stage_changes").select("*").eq("candidate_id", candidateId).order("created_at", { ascending: false }),
+      supabase.from("outreach_history").select("*").eq("candidate_id", candidateId).order("created_at", { ascending: false }),
+    ]);
+    const stageEvents: TimelineEvent[] = ((stageRes.data as StageChange[]) || []).map((sc) => ({
+      id: sc.id,
+      type: "stage_change" as const,
+      created_at: sc.created_at,
+      from_stage: sc.from_stage,
+      to_stage: sc.to_stage,
+    }));
+    const outreachEvents: TimelineEvent[] = ((outreachRes.data as OutreachRecord[]) || []).map((oh) => ({
+      id: oh.id,
+      type: "outreach" as const,
+      created_at: oh.created_at,
+      message: oh.message,
+    }));
+    const candidate = candidates.find((c) => c.id === candidateId);
+    const allEvents = [...stageEvents, ...outreachEvents];
+    if (candidate && stageEvents.length === 0) {
+      allEvents.push({ id: "added", type: "added", created_at: candidate.created_at });
+    }
+    allEvents.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (candidate && stageEvents.length > 0) {
+      allEvents.push({ id: "added", type: "added", created_at: candidate.created_at });
+    }
+    setTotalTimelineCount(allEvents.length);
+    setTimelineEvents(allEvents);
+    setLoadingTimeline(false);
+  };
+
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("candidates").delete().eq("id", id);
     if (error) {
@@ -233,13 +381,15 @@ export default function PipelineTab() {
   };
 
   const handleStageChange = async (id: string, newStage: string) => {
+    const candidate = candidates.find((c) => c.id === id);
+    const oldStage = candidate?.stage || "sourced";
     const { error } = await supabase.from("candidates").update({ stage: newStage } as any).eq("id", id);
     if (error) {
       toast({ title: "Update failed", description: error.message, variant: "destructive" });
     } else {
       setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, stage: newStage } : c));
+      recordStageChange(id, oldStage, newStage);
       if (newStage === "contacted" && user) {
-        const candidate = candidates.find((c) => c.id === id);
         if (candidate) fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
       }
     }
@@ -383,7 +533,10 @@ export default function PipelineTab() {
   const handleBulkMove = async (targetStage: string) => {
     const ids = Array.from(selectedIds);
     for (const id of ids) {
+      const c = candidates.find((x) => x.id === id);
+      const oldStage = c?.stage || "sourced";
       await supabase.from("candidates").update({ stage: targetStage } as any).eq("id", id);
+      recordStageChange(id, oldStage, targetStage);
     }
     setCandidates((prev) => prev.map((c) => selectedIds.has(c.id) ? { ...c, stage: targetStage } : c));
     if (targetStage === "contacted" && user) {
@@ -650,10 +803,52 @@ export default function PipelineTab() {
           )}
         </div>
 
-        {/* Notes */}
-        <div className="glass-card p-4 space-y-2">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Notes</p>
-          <Textarea value={notesMap[c.id] || ""} onChange={(e) => handleNotesChange(c.id, e.target.value)} placeholder="Add notes..." className="bg-secondary border-border text-sm min-h-[60px]" rows={3} />
+        {/* Notes Feed */}
+        <div className="glass-card p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Notes ({candidateNotes.length})</p>
+          <div className="flex gap-2">
+            <Textarea
+              value={newNoteText}
+              onChange={(e) => setNewNoteText(e.target.value)}
+              placeholder="Add a note..."
+              className="bg-secondary border-border text-sm min-h-[40px] flex-1"
+              rows={2}
+              onFocus={(e) => { e.currentTarget.style.minHeight = "60px"; }}
+              onBlur={(e) => { if (!newNoteText) e.currentTarget.style.minHeight = "40px"; }}
+            />
+            <Button size="sm" className="text-xs shrink-0 self-end" onClick={() => addNote(c.id)} disabled={addingNote || !newNoteText.trim()}>
+              {addingNote ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />} Add
+            </Button>
+          </div>
+          {loadingNotes ? (
+            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {candidateNotes.map((note) => (
+                <div key={note.id} className="rounded-lg bg-secondary/60 border border-border p-3 space-y-1">
+                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">{getRelativeTime(note.created_at)}</span>
+                    <button onClick={() => deleteNote(note.id, c.id)} className="text-muted-foreground hover:text-destructive transition-colors" title="Delete note">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {/* Legacy note migration */}
+              {c.notes && candidateNotes.length === 0 && (
+                <div className="rounded-lg bg-secondary/40 border border-border border-dashed p-3 space-y-2">
+                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{c.notes}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground italic">(migrated)</span>
+                    <Button size="sm" variant="outline" className="text-[10px] h-6 px-2" onClick={() => migrateNote(c.id, c.notes!)}>
+                      Convert to new format
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tags */}
@@ -676,22 +871,52 @@ export default function PipelineTab() {
           </div>
         </div>
 
-        {/* Timeline */}
-        <div className="glass-card p-4 space-y-2">
+        {/* Timeline - stage changes + outreach interleaved */}
+        <div className="glass-card p-4 space-y-3">
           <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-primary" /> Timeline</p>
-          <div className="space-y-2 pl-3 border-l border-border">
-            <div className="text-xs text-secondary-foreground">
-              <span className="text-muted-foreground">Added:</span> {new Date(c.created_at).toLocaleDateString()} {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {loadingTimeline ? (
+            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
+          ) : (
+            <div className="space-y-2 pl-3 border-l-2 border-border">
+              {timelineEvents.slice(0, timelineLimit).map((evt) => {
+                const stageColor = evt.to_stage
+                  ? evt.to_stage === "offer" ? "hsl(var(--primary))"
+                  : evt.to_stage === "screen" ? "hsl(48, 100%, 50%)"
+                  : evt.to_stage === "responded" ? "hsl(200, 100%, 50%)"
+                  : evt.to_stage === "contacted" ? "hsl(280, 70%, 60%)"
+                  : "hsl(var(--muted-foreground))"
+                  : "hsl(var(--primary))";
+
+                return (
+                  <div key={evt.id} className="relative flex items-start gap-2 -ml-[7px]">
+                    <div
+                      className="h-3 w-3 rounded-full shrink-0 mt-0.5 border-2 border-background"
+                      style={{ backgroundColor: evt.type === "outreach" ? "hsl(var(--primary))" : evt.type === "added" ? "hsl(var(--muted-foreground))" : stageColor }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      {evt.type === "stage_change" && (
+                        <p className="text-xs text-secondary-foreground">
+                          Moved from <span className="font-medium text-foreground">{STAGE_LABELS[evt.from_stage as Stage] || evt.from_stage}</span> to <span className="font-medium text-foreground">{STAGE_LABELS[evt.to_stage as Stage] || evt.to_stage}</span>
+                        </p>
+                      )}
+                      {evt.type === "outreach" && (
+                        <p className="text-xs text-secondary-foreground flex items-center gap-1"><MessageSquare className="h-3 w-3 text-primary" /> Outreach generated</p>
+                      )}
+                      {evt.type === "added" && (
+                        <p className="text-xs text-secondary-foreground">Added to pipeline</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">{getRelativeTime(evt.created_at)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {totalTimelineCount > timelineLimit && (
+                <button onClick={() => setTimelineLimit((l) => l + 20)} className="text-xs text-primary hover:underline ml-2">
+                  Show more ({totalTimelineCount - timelineLimit} remaining)
+                </button>
+              )}
             </div>
-            {c.enrichment_data && (
-              <div className="text-xs text-secondary-foreground">
-                <span className="text-muted-foreground">Enriched:</span> Data available
-              </div>
-            )}
-            <div className="text-xs text-secondary-foreground">
-              <span className="text-muted-foreground">Stage:</span> {STAGE_LABELS[c.stage as Stage] || c.stage}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Delete */}
