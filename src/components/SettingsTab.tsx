@@ -6,9 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2, Globe } from "lucide-react";
+import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2, Globe, Key } from "lucide-react";
 
-const SETTING_KEYS = ["target_role", "target_company", "pitch", "slack_webhook_url", "webhook_url"] as const;
+const SETTING_KEYS = [
+  "target_role",
+  "target_company",
+  "pitch",
+  "slack_webhook_url",
+  "webhook_url",
+  "exa_api_key",
+  "parallel_api_key",
+] as const;
 
 export default function SettingsTab() {
   const { user } = useAuth();
@@ -18,6 +26,8 @@ export default function SettingsTab() {
     target_company: "",
     pitch: "",
     slack_webhook_url: "",
+    exa_api_key: "",
+    parallel_api_key: "",
     webhook_url: "",
   });
   const [loading, setLoading] = useState(true);
@@ -27,10 +37,7 @@ export default function SettingsTab() {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const { data } = await supabase
-        .from("settings")
-        .select("key, value")
-        .eq("user_id", user.id);
+      const { data } = await supabase.from("settings").select("key, value").eq("user_id", user.id);
       if (data) {
         const map: Record<string, string> = { ...settings };
         for (const row of data as any[]) {
@@ -52,7 +59,9 @@ export default function SettingsTab() {
       const value = settings[key] || null;
       const { error } = await supabase
         .from("settings")
-        .upsert({ user_id: user.id, key, value, updated_at: new Date().toISOString() } as any, { onConflict: "user_id,key" });
+        .upsert({ user_id: user.id, key, value, updated_at: new Date().toISOString() } as any, {
+          onConflict: "user_id,key",
+        });
       if (error) {
         toast({ title: "Save failed", description: error.message, variant: "destructive" });
         setSaving(false);
@@ -89,11 +98,15 @@ export default function SettingsTab() {
         <p className="text-xs text-muted-foreground">Used for outreach message generation.</p>
 
         {loading ? (
-          <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="targetRole" className="text-xs">Target Role</Label>
+              <Label htmlFor="targetRole" className="text-xs">
+                Target Role
+              </Label>
               <Input
                 id="targetRole"
                 value={settings.target_role}
@@ -103,7 +116,9 @@ export default function SettingsTab() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="targetCompany" className="text-xs">Target Company</Label>
+              <Label htmlFor="targetCompany" className="text-xs">
+                Target Company
+              </Label>
               <Input
                 id="targetCompany"
                 value={settings.target_company}
@@ -113,7 +128,9 @@ export default function SettingsTab() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pitch" className="text-xs">One-Line Pitch</Label>
+              <Label htmlFor="pitch" className="text-xs">
+                One-Line Pitch
+              </Label>
               <Input
                 id="pitch"
                 value={settings.pitch}
@@ -135,7 +152,9 @@ export default function SettingsTab() {
         <p className="text-xs text-muted-foreground">Add a webhook URL to share candidates to a Slack channel.</p>
         {!loading && (
           <div className="space-y-1.5">
-            <Label htmlFor="slackWebhook" className="text-xs">Slack Webhook URL</Label>
+            <Label htmlFor="slackWebhook" className="text-xs">
+              Slack Webhook URL
+            </Label>
             <Input
               id="slackWebhook"
               value={settings.slack_webhook_url}
@@ -153,10 +172,14 @@ export default function SettingsTab() {
           <Globe className="h-4 w-4 text-primary" />
           <p className="text-sm font-semibold text-foreground">Webhook</p>
         </div>
-        <p className="text-xs text-muted-foreground">POST candidate data to this URL when stage changes to Contacted.</p>
+        <p className="text-xs text-muted-foreground">
+          POST candidate data to this URL when stage changes to Contacted.
+        </p>
         {!loading && (
           <div className="space-y-1.5">
-            <Label htmlFor="webhookUrl" className="text-xs">Webhook URL</Label>
+            <Label htmlFor="webhookUrl" className="text-xs">
+              Webhook URL
+            </Label>
             <Input
               id="webhookUrl"
               value={settings.webhook_url}
@@ -172,24 +195,58 @@ export default function SettingsTab() {
       {!loading && (
         <Button className="w-full glow-accent" onClick={handleSave} disabled={saving}>
           {saving ? (
-            <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
+            <>
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
+            </>
           ) : saved ? (
-            <><Check className="h-4 w-4 mr-2" /> Saved</>
+            <>
+              <Check className="h-4 w-4 mr-2" /> Saved
+            </>
           ) : (
-            <><Save className="h-4 w-4 mr-2" /> Save Settings</>
+            <>
+              <Save className="h-4 w-4 mr-2" /> Save Settings
+            </>
           )}
         </Button>
       )}
 
-      {/* Enrichment API info */}
+      {/* API Keys */}
       <div className="glass-card p-5 space-y-4">
-        <div className="flex items-start gap-3">
-          <Server className="h-5 w-5 text-primary mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">Enrichment API</p>
-            <p className="text-xs text-muted-foreground font-mono">Configured via backend secret</p>
-          </div>
+        <div className="flex items-center gap-2 mb-1">
+          <Key className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold text-foreground">API Keys</p>
         </div>
+        <p className="text-xs text-muted-foreground">Required for candidate search and enrichment.</p>
+        {!loading && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="exaApiKey" className="text-xs">
+                Exa API Key
+              </Label>
+              <Input
+                id="exaApiKey"
+                type="password"
+                value={settings.exa_api_key}
+                onChange={(e) => setSettings((st) => ({ ...st, exa_api_key: e.target.value }))}
+                placeholder="exa-xxxxxxxxxxxxxxxx"
+                className="bg-secondary border-border font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="parallelApiKey" className="text-xs">
+                Parallel API Key
+              </Label>
+              <Input
+                id="parallelApiKey"
+                type="password"
+                value={settings.parallel_api_key}
+                onChange={(e) => setSettings((st) => ({ ...st, parallel_api_key: e.target.value }))}
+                placeholder="par-xxxxxxxxxxxxxxxx"
+                className="bg-secondary border-border font-mono text-xs"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Team info */}
@@ -198,7 +255,9 @@ export default function SettingsTab() {
           <Users className="h-5 w-5 text-primary mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-foreground">Team</p>
-            <p className="text-xs text-muted-foreground">All authenticated users share access to the same pipeline data.</p>
+            <p className="text-xs text-muted-foreground">
+              All authenticated users share access to the same pipeline data.
+            </p>
           </div>
         </div>
       </div>
