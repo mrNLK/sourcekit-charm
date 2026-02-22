@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_notes: {
+        Row: {
+          candidate_id: string
+          content: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          content: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_notes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           company: string
@@ -156,23 +188,29 @@ export type Database = {
       }
       search_history: {
         Row: {
+          action_type: string
           created_at: string
           created_by: string
           id: string
+          metadata: Json | null
           query_params: Json
           result_count: number
         }
         Insert: {
+          action_type?: string
           created_at?: string
           created_by: string
           id?: string
+          metadata?: Json | null
           query_params: Json
           result_count?: number
         }
         Update: {
+          action_type?: string
           created_at?: string
           created_by?: string
           id?: string
+          metadata?: Json | null
           query_params?: Json
           result_count?: number
         }
@@ -204,6 +242,41 @@ export type Database = {
           value?: string | null
         }
         Relationships: []
+      }
+      stage_changes: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          from_stage: string
+          id: string
+          to_stage: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          from_stage: string
+          id?: string
+          to_stage: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          from_stage?: string
+          id?: string
+          to_stage?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_changes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
