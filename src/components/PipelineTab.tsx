@@ -5,10 +5,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Loader2, Search, Trash2, ChevronDown, ChevronUp, Download, Share2,
-  ArrowRight, X, Plus, SortDesc, MessageSquare, Tag, Copy, Check, RefreshCw,
-  ExternalLink, Shield, ArrowLeft, User, GraduationCap, Briefcase, Clock,
-  BookOpen, Award, Code, Globe,
+  Loader2,
+  Search,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Share2,
+  ArrowRight,
+  X,
+  Plus,
+  SortDesc,
+  MessageSquare,
+  Tag,
+  Copy,
+  Check,
+  RefreshCw,
+  ExternalLink,
+  Shield,
+  ArrowLeft,
+  User,
+  GraduationCap,
+  Briefcase,
+  Clock,
+  BookOpen,
+  Award,
+  Code,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +42,7 @@ import { computeScore, getScoreColor } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
 const STAGES = ["sourced", "contacted", "responded", "screen", "offer"] as const;
-type Stage = typeof STAGES[number];
+type Stage = (typeof STAGES)[number];
 
 const STAGE_LABELS: Record<Stage, string> = {
   sourced: "Sourced",
@@ -94,7 +117,10 @@ function getRelativeTime(dateStr: string): string {
 }
 
 // --- Webhook helper --- returns {success, error?} for UI feedback
-async function fireWebhookIfContacted(candidate: Candidate, userId: string): Promise<{ success: boolean; error?: string }> {
+async function fireWebhookIfContacted(
+  candidate: Candidate,
+  userId: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { data: setting } = await supabase
       .from("settings")
@@ -122,15 +148,24 @@ async function fireWebhookIfContacted(candidate: Candidate, userId: string): Pro
     });
     if (!res.ok) {
       const errMsg = `HTTP ${res.status}`;
-      await supabase.from("candidates").update({ webhook_status: "failed", webhook_error: errMsg } as any).eq("id", candidate.id);
+      await supabase
+        .from("candidates")
+        .update({ webhook_status: "failed", webhook_error: errMsg } as any)
+        .eq("id", candidate.id);
       return { success: false, error: errMsg };
     }
-    await supabase.from("candidates").update({ webhook_status: "success", webhook_error: null } as any).eq("id", candidate.id);
+    await supabase
+      .from("candidates")
+      .update({ webhook_status: "success", webhook_error: null } as any)
+      .eq("id", candidate.id);
     return { success: true };
   } catch (err: any) {
     const errMsg = err.message || "Network error";
     console.error("Webhook error:", err);
-    await supabase.from("candidates").update({ webhook_status: "failed", webhook_error: errMsg } as any).eq("id", candidate.id);
+    await supabase
+      .from("candidates")
+      .update({ webhook_status: "failed", webhook_error: errMsg } as any)
+      .eq("id", candidate.id);
     return { success: false, error: errMsg };
   }
 }
@@ -223,16 +258,16 @@ export default function PipelineTab() {
 
   const fetchCandidates = async (retry = true) => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("candidates")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("candidates").select("*").order("created_at", { ascending: false });
     setLoading(false);
     if (error) {
       // Retry once on auth errors
       if (retry && (error.message?.includes("JWT") || error.code === "PGRST301")) {
         const { error: refreshErr } = await supabase.auth.refreshSession();
-        if (!refreshErr) { fetchCandidates(false); return; }
+        if (!refreshErr) {
+          fetchCandidates(false);
+          return;
+        }
       }
       toast({ title: "Error loading candidates", description: error.message, variant: "destructive" });
     } else {
@@ -240,7 +275,11 @@ export default function PipelineTab() {
       const updated = list.map((c) => {
         if (c.score === null && c.enrichment_data) {
           const score = computeScore(c.enrichment_data);
-          supabase.from("candidates").update({ score } as any).eq("id", c.id).then(() => {});
+          supabase
+            .from("candidates")
+            .update({ score } as any)
+            .eq("id", c.id)
+            .then(() => {});
           return { ...c, score };
         }
         return c;
@@ -252,7 +291,9 @@ export default function PipelineTab() {
     }
   };
 
-  useEffect(() => { fetchCandidates(); }, []);
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
 
   // Load outreach history, notes, and timeline when detail panel opens
   useEffect(() => {
@@ -331,8 +372,11 @@ export default function PipelineTab() {
       user_id: user.id,
       content: legacyNote,
     } as any);
-    await supabase.from("candidates").update({ notes: null } as any).eq("id", candidateId);
-    setCandidates((prev) => prev.map((c) => c.id === candidateId ? { ...c, notes: null } : c));
+    await supabase
+      .from("candidates")
+      .update({ notes: null } as any)
+      .eq("id", candidateId);
+    setCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, notes: null } : c)));
     setNotesMap((prev) => ({ ...prev, [candidateId]: "" }));
     loadCandidateNotes(candidateId);
     toast({ title: "Note migrated" });
@@ -352,8 +396,16 @@ export default function PipelineTab() {
   const loadTimeline = async (candidateId: string) => {
     setLoadingTimeline(true);
     const [stageRes, outreachRes] = await Promise.all([
-      supabase.from("stage_changes").select("*").eq("candidate_id", candidateId).order("created_at", { ascending: false }),
-      supabase.from("outreach_history").select("*").eq("candidate_id", candidateId).order("created_at", { ascending: false }),
+      supabase
+        .from("stage_changes")
+        .select("*")
+        .eq("candidate_id", candidateId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("outreach_history")
+        .select("*")
+        .eq("candidate_id", candidateId)
+        .order("created_at", { ascending: false }),
     ]);
     const stageEvents: TimelineEvent[] = ((stageRes.data as StageChange[]) || []).map((sc) => ({
       id: sc.id,
@@ -389,7 +441,11 @@ export default function PipelineTab() {
     } else {
       setCandidates((prev) => prev.filter((c) => c.id !== id));
       setDeleteId(null);
-      setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+      setSelectedIds((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
       toast({ title: "Candidate removed" });
     }
   };
@@ -397,37 +453,63 @@ export default function PipelineTab() {
   const handleStageChange = async (id: string, newStage: string) => {
     const candidate = candidates.find((c) => c.id === id);
     const oldStage = candidate?.stage || "sourced";
-    const { error } = await supabase.from("candidates").update({ stage: newStage } as any).eq("id", id);
+    const { error } = await supabase
+      .from("candidates")
+      .update({ stage: newStage } as any)
+      .eq("id", id);
     if (error) {
       toast({ title: "Update failed", description: error.message, variant: "destructive" });
     } else {
-      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, stage: newStage } : c));
+      setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, stage: newStage } : c)));
       recordStageChange(id, oldStage, newStage);
       if (newStage === "contacted" && user && candidate) {
         const result = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
         if (result.success) {
           // Check if webhook URL was configured (success with no status update means no URL)
-          const updated = { ...candidate, stage: newStage, webhook_status: "success" as string | null, webhook_error: null as string | null };
+          const updated = {
+            ...candidate,
+            stage: newStage,
+            webhook_status: "success" as string | null,
+            webhook_error: null as string | null,
+          };
           // Only show toast if webhook actually fired (check if setting exists)
-          const { data: setting } = await supabase.from("settings").select("value").eq("user_id", user.id).eq("key", "webhook_url").maybeSingle();
+          const { data: setting } = await supabase
+            .from("settings")
+            .select("value")
+            .eq("user_id", user.id)
+            .eq("key", "webhook_url")
+            .maybeSingle();
           if ((setting as any)?.value) {
-            setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c));
+            setCandidates((prev) =>
+              prev.map((c) => (c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c)),
+            );
             toast({ title: `Webhook fired for ${candidate.name}` });
           }
         } else {
-          setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "failed", webhook_error: result.error || null } : c));
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === id ? { ...c, webhook_status: "failed", webhook_error: result.error || null } : c,
+            ),
+          );
           toast({
             title: `Webhook failed for ${candidate.name}`,
             description: result.error,
             variant: "destructive",
             action: (
-              <Button size="sm" variant="outline" className="text-xs" onClick={async () => {
-                const retry = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
-                if (retry.success) {
-                  setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c));
-                  toast({ title: `Webhook fired for ${candidate.name}` });
-                }
-              }}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={async () => {
+                  const retry = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
+                  if (retry.success) {
+                    setCandidates((prev) =>
+                      prev.map((c) => (c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c)),
+                    );
+                    toast({ title: `Webhook fired for ${candidate.name}` });
+                  }
+                }}
+              >
                 Retry
               </Button>
             ),
@@ -441,8 +523,11 @@ export default function PipelineTab() {
     setNotesMap((prev) => ({ ...prev, [id]: value }));
     if (notesTimerRef.current[id]) clearTimeout(notesTimerRef.current[id]);
     notesTimerRef.current[id] = setTimeout(async () => {
-      await supabase.from("candidates").update({ notes: value || null } as any).eq("id", id);
-      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, notes: value || null } : c));
+      await supabase
+        .from("candidates")
+        .update({ notes: value || null } as any)
+        .eq("id", id);
+      setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, notes: value || null } : c)));
     }, 500);
   };
 
@@ -455,9 +540,12 @@ export default function PipelineTab() {
     const current = candidate.tags || [];
     if (current.includes(tag)) return;
     const newTags = [...current, tag];
-    const { error } = await supabase.from("candidates").update({ tags: newTags } as any).eq("id", id);
+    const { error } = await supabase
+      .from("candidates")
+      .update({ tags: newTags } as any)
+      .eq("id", id);
     if (!error) {
-      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, tags: newTags } : c));
+      setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, tags: newTags } : c)));
       setTagInput((prev) => ({ ...prev, [id]: "" }));
     }
   };
@@ -466,19 +554,26 @@ export default function PipelineTab() {
     const candidate = candidates.find((c) => c.id === id);
     if (!candidate) return;
     const newTags = (candidate.tags || []).filter((t) => t !== tag);
-    const { error } = await supabase.from("candidates").update({ tags: newTags.length > 0 ? newTags : null } as any).eq("id", id);
+    const { error } = await supabase
+      .from("candidates")
+      .update({ tags: newTags.length > 0 ? newTags : null } as any)
+      .eq("id", id);
     if (!error) {
-      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, tags: newTags.length > 0 ? newTags : null } : c));
+      setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, tags: newTags.length > 0 ? newTags : null } : c)));
     }
   };
 
   const handleOutreach = async (candidate: Candidate) => {
     setOutreachModal({ id: candidate.id, message: "", loading: true });
     setCopiedOutreach(false);
-    let targetRole = "", targetCompany = "", pitch = "";
+    let targetRole = "",
+      targetCompany = "",
+      pitch = "";
     if (user) {
       const { data: settings } = await supabase
-        .from("settings").select("key, value").eq("user_id", user.id)
+        .from("settings")
+        .select("key, value")
+        .eq("user_id", user.id)
         .in("key", ["target_role", "target_company", "pitch"]);
       if (settings) {
         for (const s of settings as any[]) {
@@ -496,7 +591,16 @@ export default function PipelineTab() {
     if (/publication|paper/i.test(enrichText)) signals.push("Published research");
     try {
       const { data, error } = await supabase.functions.invoke("generate-outreach", {
-        body: { name: candidate.name, title: candidate.role || "", company: candidate.company, signals, targetRole, targetCompany, pitch, enrichment_data: candidate.enrichment_data || undefined },
+        body: {
+          name: candidate.name,
+          title: candidate.role || "",
+          company: candidate.company,
+          signals,
+          targetRole,
+          targetCompany,
+          pitch,
+          enrichment_data: candidate.enrichment_data || undefined,
+        },
       });
       if (error) throw error;
       const message = data.message || "Failed to generate message.";
@@ -519,32 +623,64 @@ export default function PipelineTab() {
 
   const handleShareToSlack = async (candidate: Candidate) => {
     if (!user) return;
-    const { data: settings } = await supabase.from("settings").select("value").eq("user_id", user.id).eq("key", "slack_webhook_url").maybeSingle();
+    const { data: settings } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("user_id", user.id)
+      .eq("key", "slack_webhook_url")
+      .maybeSingle();
     const webhookUrl = (settings as any)?.value;
-    if (!webhookUrl) { toast({ title: "Set up Slack in Settings first.", variant: "destructive" }); return; }
+    if (!webhookUrl) {
+      toast({ title: "Set up Slack in Settings first.", variant: "destructive" });
+      return;
+    }
     const linkedinUrl = candidate.enrichment_data?.contact_info?.linkedin || "";
     const payload = {
       blocks: [
-        { type: "section", text: { type: "mrkdwn", text: `*${candidate.name}* | ${candidate.role || "Unknown"} at ${candidate.company}\nScore: ${candidate.score ?? "N/A"}/100 | Stage: ${STAGE_LABELS[candidate.stage as Stage] || candidate.stage}\n${linkedinUrl}` } },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${candidate.name}* | ${candidate.role || "Unknown"} at ${candidate.company}\nScore: ${candidate.score ?? "N/A"}/100 | Stage: ${STAGE_LABELS[candidate.stage as Stage] || candidate.stage}\n${linkedinUrl}`,
+          },
+        },
         { type: "context", elements: [{ type: "mrkdwn", text: "Shared from SourceKit" }] },
       ],
     };
     try {
-      const res = await fetch(webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       toast({ title: "Shared to Slack" });
-    } catch { toast({ title: "Failed to share", variant: "destructive" }); }
+    } catch {
+      toast({ title: "Failed to share", variant: "destructive" });
+    }
   };
 
   const escapeCsvValue = (val: string): string => {
-    if (val.includes('"') || val.includes(',') || val.includes('\n') || val.includes('\r')) {
+    if (val.includes('"') || val.includes(",") || val.includes("\n") || val.includes("\r")) {
       return `"${val.replace(/"/g, '""')}"`;
     }
     return val;
   };
 
   const buildCsvRows = (list: Candidate[]) => {
-    const header = ["name", "current_role", "company", "stage", "score", "linkedin_url", "email", "skills", "summary", "created_at", "notes"];
+    const header = [
+      "name",
+      "current_role",
+      "company",
+      "stage",
+      "score",
+      "linkedin_url",
+      "email",
+      "skills",
+      "summary",
+      "created_at",
+      "notes",
+    ];
     const rows = list.map((c) => {
       const enrichment = c.enrichment_data || {};
       const linkedinUrl = enrichment.contact_info?.linkedin || "";
@@ -552,9 +688,17 @@ export default function PipelineTab() {
       const skills = Array.isArray(enrichment.skills) ? enrichment.skills.join(", ") : "";
       const summary = enrichment.summary || "";
       return [
-        c.name, c.role || "", c.company, STAGE_LABELS[c.stage as Stage] || c.stage,
-        c.score?.toString() || "", linkedinUrl, email, skills, summary,
-        new Date(c.created_at).toISOString().split("T")[0], c.notes || ""
+        c.name,
+        c.role || "",
+        c.company,
+        STAGE_LABELS[c.stage as Stage] || c.stage,
+        c.score?.toString() || "",
+        linkedinUrl,
+        email,
+        skills,
+        summary,
+        new Date(c.created_at).toISOString().split("T")[0],
+        c.notes || "",
       ];
     });
     return [header, ...rows].map((r) => r.map((v) => escapeCsvValue(v)).join(",")).join("\n");
@@ -564,7 +708,9 @@ export default function PipelineTab() {
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = filename; a.click();
+    a.href = url;
+    a.download = filename;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -578,7 +724,12 @@ export default function PipelineTab() {
   };
 
   const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   };
 
   const toggleSelectAllInStage = (stage: string) => {
@@ -586,7 +737,10 @@ export default function PipelineTab() {
     const allSelected = idsInStage.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const n = new Set(prev);
-      for (const id of idsInStage) { if (allSelected) n.delete(id); else n.add(id); }
+      for (const id of idsInStage) {
+        if (allSelected) n.delete(id);
+        else n.add(id);
+      }
       return n;
     });
   };
@@ -596,18 +750,32 @@ export default function PipelineTab() {
     for (const id of ids) {
       const c = candidates.find((x) => x.id === id);
       const oldStage = c?.stage || "sourced";
-      await supabase.from("candidates").update({ stage: targetStage } as any).eq("id", id);
+      await supabase
+        .from("candidates")
+        .update({ stage: targetStage } as any)
+        .eq("id", id);
       recordStageChange(id, oldStage, targetStage);
     }
-    setCandidates((prev) => prev.map((c) => selectedIds.has(c.id) ? { ...c, stage: targetStage } : c));
+    setCandidates((prev) => prev.map((c) => (selectedIds.has(c.id) ? { ...c, stage: targetStage } : c)));
     if (targetStage === "contacted" && user) {
       for (const id of ids) {
         const c = candidates.find((x) => x.id === id);
         if (c) {
           const result = await fireWebhookIfContacted({ ...c, stage: targetStage }, user.id);
-          setCandidates((prev) => prev.map((x) => x.id === id ? { ...x, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null } : x));
+          setCandidates((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? { ...x, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null }
+                : x,
+            ),
+          );
           if (result.success) {
-            const { data: setting } = await supabase.from("settings").select("value").eq("user_id", user.id).eq("key", "webhook_url").maybeSingle();
+            const { data: setting } = await supabase
+              .from("settings")
+              .select("value")
+              .eq("user_id", user.id)
+              .eq("key", "webhook_url")
+              .maybeSingle();
             if ((setting as any)?.value) toast({ title: `Webhook fired for ${c.name}` });
           } else {
             toast({ title: `Webhook failed for ${c.name}`, description: result.error, variant: "destructive" });
@@ -622,7 +790,13 @@ export default function PipelineTab() {
   const retryWebhook = async (candidate: Candidate) => {
     if (!user) return;
     const result = await fireWebhookIfContacted(candidate, user.id);
-    setCandidates((prev) => prev.map((c) => c.id === candidate.id ? { ...c, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null } : c));
+    setCandidates((prev) =>
+      prev.map((c) =>
+        c.id === candidate.id
+          ? { ...c, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null }
+          : c,
+      ),
+    );
     if (result.success) {
       toast({ title: `Webhook fired for ${candidate.name}` });
     } else {
@@ -653,9 +827,12 @@ export default function PipelineTab() {
       const candidate = candidates.find((c) => c.id === id);
       if (!candidate) continue;
       const current = candidate.tags || [];
-      const newTags = [...new Set([...current, ...tags.map((t) => t.startsWith("#") ? t : `#${t}`)])];
-      await supabase.from("candidates").update({ tags: newTags } as any).eq("id", id);
-      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, tags: newTags } : c));
+      const newTags = [...new Set([...current, ...tags.map((t) => (t.startsWith("#") ? t : `#${t}`))])];
+      await supabase
+        .from("candidates")
+        .update({ tags: newTags } as any)
+        .eq("id", id);
+      setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, tags: newTags } : c)));
     }
   };
 
@@ -663,10 +840,13 @@ export default function PipelineTab() {
     for (const id of ids) {
       const c = candidates.find((x) => x.id === id);
       const oldStage = c?.stage || "sourced";
-      await supabase.from("candidates").update({ stage: targetStage } as any).eq("id", id);
+      await supabase
+        .from("candidates")
+        .update({ stage: targetStage } as any)
+        .eq("id", id);
       recordStageChange(id, oldStage, targetStage);
     }
-    setCandidates((prev) => prev.map((c) => ids.includes(c.id) ? { ...c, stage: targetStage } : c));
+    setCandidates((prev) => prev.map((c) => (ids.includes(c.id) ? { ...c, stage: targetStage } : c)));
   };
 
   const allTags = Array.from(new Set(candidates.flatMap((c) => c.tags || [])));
@@ -677,15 +857,18 @@ export default function PipelineTab() {
 
   const filtered = candidates.filter((c) => {
     const q = filter.toLowerCase();
-    const matchesText = !q || c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || (c.role || "").toLowerCase().includes(q) || (c.tags || []).some((t) => t.toLowerCase().includes(q));
+    const matchesText =
+      !q ||
+      c.name.toLowerCase().includes(q) ||
+      c.company.toLowerCase().includes(q) ||
+      (c.role || "").toLowerCase().includes(q) ||
+      (c.tags || []).some((t) => t.toLowerCase().includes(q));
     const matchesStage = !activeStage || c.stage === activeStage;
     const matchesTags = activeTags.size === 0 || (c.tags || []).some((t) => activeTags.has(t));
     return matchesText && matchesStage && matchesTags;
   });
 
-  const sorted = sortByScore
-    ? [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-    : filtered;
+  const sorted = sortByScore ? [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)) : filtered;
 
   const nextStage = (current: string): string | null => {
     const idx = STAGES.indexOf(current as Stage);
@@ -700,7 +883,10 @@ export default function PipelineTab() {
     return (
       <div className="animate-slide-up space-y-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            onClick={() => setDetailId(null)}
+            className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="h-20 w-20 rounded-full bg-muted animate-pulse" />
@@ -765,11 +951,28 @@ export default function PipelineTab() {
 
       {/* Stage pills */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        <button onClick={() => setActiveStage(null)} className={cn("px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors", !activeStage ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground border border-border hover:text-foreground")}>
+        <button
+          onClick={() => setActiveStage(null)}
+          className={cn(
+            "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors",
+            !activeStage
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-muted-foreground border border-border hover:text-foreground",
+          )}
+        >
           All ({candidates.length})
         </button>
         {STAGES.map((s) => (
-          <button key={s} onClick={() => setActiveStage(activeStage === s ? null : s)} className={cn("px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors", activeStage === s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground border border-border hover:text-foreground")}>
+          <button
+            key={s}
+            onClick={() => setActiveStage(activeStage === s ? null : s)}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors",
+              activeStage === s
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground border border-border hover:text-foreground",
+            )}
+          >
             {STAGE_LABELS[s]} ({stageCounts[s] || 0})
           </button>
         ))}
@@ -779,7 +982,23 @@ export default function PipelineTab() {
       {allTags.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {allTags.map((tag) => (
-            <button key={tag} onClick={() => setActiveTags((prev) => { const n = new Set(prev); if (n.has(tag)) n.delete(tag); else n.add(tag); return n; })} className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors", activeTags.has(tag) ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary text-muted-foreground border border-border hover:text-foreground")}>
+            <button
+              key={tag}
+              onClick={() =>
+                setActiveTags((prev) => {
+                  const n = new Set(prev);
+                  if (n.has(tag)) n.delete(tag);
+                  else n.add(tag);
+                  return n;
+                })
+              }
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors",
+                activeTags.has(tag)
+                  ? "bg-primary/20 text-primary border border-primary/30"
+                  : "bg-secondary text-muted-foreground border border-border hover:text-foreground",
+              )}
+            >
               {tag}
             </button>
           ))}
@@ -790,18 +1009,32 @@ export default function PipelineTab() {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by name, company, role, tags..." className="pl-9 bg-secondary border-border" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter by name, company, role, tags..."
+            className="pl-9 bg-secondary border-border"
+          />
         </div>
-        <Button variant={sortByScore ? "default" : "outline"} size="sm" onClick={() => setSortByScore(!sortByScore)} className="gap-1 text-xs shrink-0">
+        <Button
+          variant={sortByScore ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortByScore(!sortByScore)}
+          className="gap-1 text-xs shrink-0"
+        >
           <SortDesc className="h-3.5 w-3.5" /> Score
         </Button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
       ) : sorted.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted-foreground text-sm">
-          {candidates.length === 0 ? "No candidates saved yet. Search and enrich to get started." : "No candidates match your filter."}
+          {candidates.length === 0
+            ? "No candidates saved yet. Search and enrich to get started."
+            : "No candidates match your filter."}
         </div>
       ) : (
         <div className="space-y-2">
@@ -809,7 +1042,10 @@ export default function PipelineTab() {
           {activeStage && (
             <label className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground">
               <Checkbox
-                checked={filtered.filter((c) => c.stage === activeStage).every((c) => selectedIds.has(c.id)) && filtered.filter((c) => c.stage === activeStage).length > 0}
+                checked={
+                  filtered.filter((c) => c.stage === activeStage).every((c) => selectedIds.has(c.id)) &&
+                  filtered.filter((c) => c.stage === activeStage).length > 0
+                }
                 onCheckedChange={() => toggleSelectAllInStage(activeStage)}
               />
               Select all {STAGE_LABELS[activeStage as Stage]}
@@ -826,74 +1062,190 @@ export default function PipelineTab() {
                   <div className="glass-card p-4 flex items-center justify-between animate-slide-up">
                     <span className="text-sm text-foreground">Delete {c.name}?</span>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)}>Delete</Button>
-                      <Button size="sm" variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(c.id)}>
+                        Delete
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setDeleteId(null)}>
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 ) : expandedId === c.id ? (
                   <div className="animate-slide-up space-y-1">
-                    <button onClick={() => setExpandedId(null)} className="w-full flex items-center justify-between glass-card p-4">
+                    <button
+                      onClick={() => setExpandedId(null)}
+                      className="w-full flex items-center justify-between glass-card p-4"
+                    >
                       <span className="text-sm font-semibold text-foreground">Collapse</span>
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
                     </button>
                     {c.score !== null && (
                       <div className="flex items-center gap-2 px-1">
-                        <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}>{c.score}</div>
+                        <div
+                          className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}
+                        >
+                          {c.score}
+                        </div>
                         <span className="text-xs text-muted-foreground">EEA Score</span>
                       </div>
                     )}
                     <div className="flex gap-1.5 px-1 py-1 overflow-x-auto">
                       {STAGES.map((s) => (
-                        <button key={s} onClick={() => handleStageChange(c.id, s)} className={cn("px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors", c.stage === s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground border border-border")}>{STAGE_LABELS[s]}</button>
+                        <button
+                          key={s}
+                          onClick={() => handleStageChange(c.id, s)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors",
+                            c.stage === s
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-muted-foreground border border-border",
+                          )}
+                        >
+                          {STAGE_LABELS[s]}
+                        </button>
                       ))}
                     </div>
                     <CandidateCard data={c} />
                     {c.enrichment_data?.score_signals && (
                       <div className="glass-card p-4 space-y-3">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Shield className="h-3.5 w-3.5 text-primary" /> EEA Signals</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(c.enrichment_data.score_signals as Record<string, boolean>).map(([key, val]) => (
-                            <span key={key} className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium border", val ? "bg-primary/15 text-primary border-primary/25" : "bg-secondary text-muted-foreground/50 border-border line-through")}>{key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}</span>
-                          ))}
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                          <Shield className="h-3.5 w-3.5 text-primary" /> EEA Signals
                         </div>
-                        {c.enrichment_data.evidence && Object.values(c.enrichment_data.evidence as Record<string, string>).some((v) => v) && (
-                          <div className="space-y-1.5 pt-1 border-t border-border">
-                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Evidence</p>
-                            {Object.entries(c.enrichment_data.evidence as Record<string, string>).filter(([, v]) => v).map(([key, val]) => (
-                              <div key={key} className="flex items-start gap-2 text-xs">
-                                <span className="text-primary font-medium shrink-0">{key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}</span>
-                                {val.startsWith("http") ? (
-                                  <a href={val} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground truncate flex items-center gap-1">{val.replace(/https?:\/\/(www\.)?/, "").split("/").slice(0, 2).join("/")}<ExternalLink className="h-2.5 w-2.5 shrink-0" /></a>
-                                ) : <span className="text-muted-foreground truncate">{val}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(c.enrichment_data.score_signals as Record<string, boolean>).map(
+                            ([key, val]) => (
+                              <span
+                                key={key}
+                                className={cn(
+                                  "px-2 py-0.5 rounded-full text-[10px] font-medium border",
+                                  val
+                                    ? "bg-primary/15 text-primary border-primary/25"
+                                    : "bg-secondary text-muted-foreground/50 border-border line-through",
+                                )}
+                              >
+                                {key
+                                  .replace(/_/g, " ")
+                                  .replace(/\bhas\b/g, "")
+                                  .trim()}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                        {c.enrichment_data.evidence &&
+                          Object.values(c.enrichment_data.evidence as Record<string, string>).some((v) => v) && (
+                            <div className="space-y-1.5 pt-1 border-t border-border">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                Evidence
+                              </p>
+                              {Object.entries(c.enrichment_data.evidence as Record<string, string>)
+                                .filter(([, v]) => v)
+                                .map(([key, val]) => (
+                                  <div key={key} className="flex items-start gap-2 text-xs">
+                                    <span className="text-primary font-medium shrink-0">
+                                      {key
+                                        .replace(/_/g, " ")
+                                        .replace(/\bhas\b/g, "")
+                                        .trim()}
+                                    </span>
+                                    {val.startsWith("http") ? (
+                                      <a
+                                        href={val}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-muted-foreground hover:text-foreground truncate flex items-center gap-1"
+                                      >
+                                        {val
+                                          .replace(/https?:\/\/(www\.)?/, "")
+                                          .split("/")
+                                          .slice(0, 2)
+                                          .join("/")}
+                                        <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <span className="text-muted-foreground truncate">{val}</span>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
                       </div>
                     )}
                     <div className="glass-card p-4 space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><MessageSquare className="h-3.5 w-3.5" /> Notes</div>
-                      <Textarea value={notesMap[c.id] || ""} onChange={(e) => handleNotesChange(c.id, e.target.value)} placeholder="Add notes about this candidate..." className="bg-secondary border-border text-sm min-h-[60px]" rows={3} />
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <MessageSquare className="h-3.5 w-3.5" /> Notes
+                      </div>
+                      <Textarea
+                        value={notesMap[c.id] || ""}
+                        onChange={(e) => handleNotesChange(c.id, e.target.value)}
+                        placeholder="Add notes about this candidate..."
+                        className="bg-secondary border-border text-sm min-h-[60px]"
+                        rows={3}
+                      />
                     </div>
                     <div className="glass-card p-4 space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Tag className="h-3.5 w-3.5" /> Tags</div>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <Tag className="h-3.5 w-3.5" /> Tags
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {(c.tags || []).map((tag) => (
-                          <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">{tag}<button onClick={() => handleRemoveTag(c.id, tag)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button></span>
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20"
+                          >
+                            {tag}
+                            <button onClick={() => handleRemoveTag(c.id, tag)} className="hover:text-destructive">
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
                         ))}
                         {showTagInput === c.id ? (
-                          <form onSubmit={(e) => { e.preventDefault(); handleAddTag(c.id); }} className="inline-flex">
-                            <input autoFocus value={tagInput[c.id] || ""} onChange={(e) => setTagInput((prev) => ({ ...prev, [c.id]: e.target.value }))} onBlur={() => { handleAddTag(c.id); setShowTagInput(null); }} placeholder="#tag" className="w-20 px-2 py-0.5 rounded-full text-[10px] bg-secondary border border-border text-foreground outline-none focus:border-primary font-mono" />
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              handleAddTag(c.id);
+                            }}
+                            className="inline-flex"
+                          >
+                            <input
+                              autoFocus
+                              value={tagInput[c.id] || ""}
+                              onChange={(e) => setTagInput((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                              onBlur={() => {
+                                handleAddTag(c.id);
+                                setShowTagInput(null);
+                              }}
+                              placeholder="#tag"
+                              className="w-20 px-2 py-0.5 rounded-full text-[10px] bg-secondary border border-border text-foreground outline-none focus:border-primary font-mono"
+                            />
                           </form>
                         ) : (
-                          <button onClick={() => setShowTagInput(c.id)} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border hover:text-foreground"><Plus className="h-2.5 w-2.5" /> Add</button>
+                          <button
+                            onClick={() => setShowTagInput(c.id)}
+                            className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border hover:text-foreground"
+                          >
+                            <Plus className="h-2.5 w-2.5" /> Add
+                          </button>
                         )}
                       </div>
                     </div>
                     <div className="flex gap-1.5">
-                      {c.enrichment_data && <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleOutreach(c)}><MessageSquare className="h-3.5 w-3.5 mr-1" /> Write Outreach</Button>}
-                      <Button size="sm" variant="outline" className="text-xs" onClick={() => handleShareToSlack(c)}><Share2 className="h-3.5 w-3.5" /></Button>
-                      <Button variant="destructive" size="sm" className="text-xs" onClick={() => setDeleteId(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      {
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-xs"
+                          onClick={() => handleOutreach(c)}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 mr-1" /> Write Outreach
+                        </Button>
+                      }
+                      <Button size="sm" variant="outline" className="text-xs" onClick={() => handleShareToSlack(c)}>
+                        <Share2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="destructive" size="sm" className="text-xs" onClick={() => setDeleteId(c.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -911,11 +1263,19 @@ export default function PipelineTab() {
                         <div className="flex items-center gap-3 min-w-0">
                           <AvatarImg src={c.picture_url} name={c.name} size={8} />
                           {c.score !== null && (
-                            <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0" style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}>{c.score}</div>
+                            <div
+                              className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                              style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}
+                            >
+                              {c.score}
+                            </div>
                           )}
                           <div className="min-w-0">
                             <button
-                              onClick={(e) => { e.stopPropagation(); setDetailId(c.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailId(c.id);
+                              }}
                               className="font-semibold text-foreground truncate hover:text-primary transition-colors text-left"
                             >
                               {c.name}
@@ -925,19 +1285,31 @@ export default function PipelineTab() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">{STAGE_LABELS[c.stage as Stage] || c.stage}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
+                            {STAGE_LABELS[c.stage as Stage] || c.stage}
+                          </span>
                           {c.stage === "contacted" && c.webhook_status === "success" && (
                             <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Webhook sent" />
                           )}
                           {c.stage === "contacted" && c.webhook_status === "failed" && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); retryWebhook(c); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                retryWebhook(c);
+                              }}
                               className="h-2 w-2 rounded-full bg-red-500 shrink-0 cursor-pointer"
                               title={`Webhook failed${c.webhook_error ? `: ${c.webhook_error}` : ""} - click to retry`}
                             />
                           )}
                           {next && (
-                            <button onClick={(e) => { e.stopPropagation(); handleStageChange(c.id, next); }} className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors" title={`Move to ${STAGE_LABELS[next as Stage]}`}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStageChange(c.id, next);
+                              }}
+                              className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                              title={`Move to ${STAGE_LABELS[next as Stage]}`}
+                            >
                               <ArrowRight className="h-3.5 w-3.5" />
                             </button>
                           )}
@@ -947,7 +1319,12 @@ export default function PipelineTab() {
                       {(c.tags || []).length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {(c.tags || []).slice(0, 4).map((tag) => (
-                            <span key={tag} className="px-1.5 py-0 rounded text-[9px] font-medium bg-primary/5 text-primary/60">{tag}</span>
+                            <span
+                              key={tag}
+                              className="px-1.5 py-0 rounded text-[9px] font-medium bg-primary/5 text-primary/60"
+                            >
+                              {tag}
+                            </span>
                           ))}
                         </div>
                       )}
@@ -967,48 +1344,98 @@ export default function PipelineTab() {
           <div className="flex items-center gap-2 overflow-x-auto">
             <select
               defaultValue=""
-              onChange={(e) => { if (e.target.value) handleBulkMove(e.target.value); e.target.value = ""; }}
+              onChange={(e) => {
+                if (e.target.value) handleBulkMove(e.target.value);
+                e.target.value = "";
+              }}
               className="px-2 py-1.5 rounded-md text-xs font-medium bg-secondary border border-border text-foreground"
             >
-              <option value="" disabled>Move to...</option>
-              {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+              <option value="" disabled>
+                Move to...
+              </option>
+              {STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {STAGE_LABELS[s]}
+                </option>
+              ))}
             </select>
             <Button size="sm" variant="outline" className="text-xs shrink-0" onClick={handleBulkExport}>
               <Download className="h-3 w-3 mr-1" /> Export
             </Button>
             {bulkDeleteConfirm ? (
               <div className="flex gap-1">
-                <Button size="sm" variant="destructive" className="text-xs" onClick={handleBulkDelete}>Confirm</Button>
-                <Button size="sm" variant="secondary" className="text-xs" onClick={() => setBulkDeleteConfirm(false)}>Cancel</Button>
+                <Button size="sm" variant="destructive" className="text-xs" onClick={handleBulkDelete}>
+                  Confirm
+                </Button>
+                <Button size="sm" variant="secondary" className="text-xs" onClick={() => setBulkDeleteConfirm(false)}>
+                  Cancel
+                </Button>
               </div>
             ) : (
-              <Button size="sm" variant="destructive" className="text-xs shrink-0" onClick={() => setBulkDeleteConfirm(true)}>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="text-xs shrink-0"
+                onClick={() => setBulkDeleteConfirm(true)}
+              >
                 <Trash2 className="h-3 w-3 mr-1" /> Delete
               </Button>
             )}
-            <button onClick={() => setSelectedIds(new Set())} className="p-1 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
       )}
 
       {/* Outreach Modal */}
       {outreachModal && !detailId && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setOutreachModal(null)}>
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setOutreachModal(null)}
+        >
           <div className="glass-card p-6 w-full max-w-md space-y-4 glow-accent" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Outreach Message</h3>
-              <button onClick={() => setOutreachModal(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+              <button onClick={() => setOutreachModal(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
             </div>
             {outreachModal.loading ? (
-              <div className="flex flex-col items-center gap-3 py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /><p className="text-xs text-muted-foreground">Generating message...</p></div>
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">Generating message...</p>
+              </div>
             ) : (
               <>
                 <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{outreachModal.message}</p>
                 <div className="flex gap-2">
-                  <Button size="sm" className="flex-1 text-xs" onClick={async () => { await navigator.clipboard.writeText(outreachModal.message); setCopiedOutreach(true); toast({ title: "Copied to clipboard" }); setTimeout(() => setCopiedOutreach(false), 2000); }}>
-                    {copiedOutreach ? <><Check className="h-3 w-3 mr-1" /> Copied</> : <><Copy className="h-3 w-3 mr-1" /> Copy</>}
+                  <Button
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(outreachModal.message);
+                      setCopiedOutreach(true);
+                      toast({ title: "Copied to clipboard" });
+                      setTimeout(() => setCopiedOutreach(false), 2000);
+                    }}
+                  >
+                    {copiedOutreach ? (
+                      <>
+                        <Check className="h-3 w-3 mr-1" /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3 mr-1" /> Copy
+                      </>
+                    )}
                   </Button>
-                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={handleRegenerateOutreach}><RefreshCw className="h-3 w-3 mr-1" /> Regenerate</Button>
+                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={handleRegenerateOutreach}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
+                  </Button>
                 </div>
               </>
             )}
