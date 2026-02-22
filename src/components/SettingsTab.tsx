@@ -192,23 +192,6 @@ export default function SettingsTab() {
       </div>
 
       {/* Save button */}
-      {!loading && (
-        <Button className="w-full glow-accent" onClick={handleSave} disabled={saving}>
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
-            </>
-          ) : saved ? (
-            <>
-              <Check className="h-4 w-4 mr-2" /> Saved
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" /> Save Settings
-            </>
-          )}
-        </Button>
-      )}
 
       {/* API Keys */}
       <div className="glass-card p-5 space-y-4">
@@ -248,6 +231,24 @@ export default function SettingsTab() {
           </div>
         )}
       </div>
+
+      {!loading && (
+        <Button className="w-full glow-accent" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
+            </>
+          ) : saved ? (
+            <>
+              <Check className="h-4 w-4 mr-2" /> Saved
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" /> Save Settings
+            </>
+          )}
+        </Button>
+      )}
 
       {/* Team info */}
       <div className="glass-card p-5 space-y-4">
