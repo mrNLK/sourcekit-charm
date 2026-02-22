@@ -623,7 +623,7 @@ export default function SearchTab({
   const handleSave = async () => {
     if (!user || !result) return;
     setSaving(true);
-    const { error } = await supabase.from("candidates").insert({
+    const { error } = await supabase.from("watchlist").insert({
       name: name.trim(),
       company: company.trim(),
       role: role.trim() || null,
@@ -635,7 +635,7 @@ export default function SearchTab({
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
     } else {
       setSaved(true);
-      toast({ title: "Candidate saved to pipeline" });
+      toast({ title: "Added to watchlist" });
     }
   };
 
@@ -1955,6 +1955,9 @@ export default function SearchTab({
                             role: candidate.role,
                             enrichment_data: enrichedResult,
                           }}
+                          onSave={handleSave}
+                          isSaved={saved}
+                          saving={saving}
                         />
                       </div>
                     )}
