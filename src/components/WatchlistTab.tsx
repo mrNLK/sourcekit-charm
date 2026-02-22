@@ -6,8 +6,8 @@ interface WatchlistEntry {
   id: string;
   name: string;
   company: string;
-  title: string;
-  linkedin_url: string;
+  stage: string;
+  score: number;
   notes: string;
   created_at: string;
 }
@@ -16,7 +16,7 @@ export default function WatchlistTab() {
   const [items, setItems] = useState<WatchlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", company: "", title: "", linkedin_url: "", notes: "" });
+  const [form, setForm] = useState({ name: "", company: "", stage: "", notes: "" });
 
   useEffect(() => {
     loadWatchlist();
@@ -32,7 +32,7 @@ export default function WatchlistTab() {
   const addItem = async () => {
     if (!form.name.trim()) return;
     await (supabase as any).from("candidates").insert([form]);
-    setForm({ name: "", company: "", title: "", linkedin_url: "", notes: "" });
+    setForm({ name: "", company: "", stage: "", notes: "" });
     setShowAdd(false);
     loadWatchlist();
   };
@@ -88,15 +88,9 @@ export default function WatchlistTab() {
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
             <input
-              placeholder="Role"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
-            />
-            <input
-              placeholder="LinkedIn URL"
-              value={form.linkedin_url}
-              onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
+              placeholder="Stage"
+              value={form.stage}
+              onChange={(e) => setForm({ ...form, stage: e.target.value })}
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
           </div>
@@ -143,22 +137,12 @@ export default function WatchlistTab() {
                   {item.company ? ` at ${item.company}` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {item.title || "No role specified"}
+                  {item.stage || "Sourced"}
                   {item.notes ? ` \u2022 ${item.notes}` : ""}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-              {item.linkedin_url && (
-                <a
-                  href={item.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-muted-foreground hover:text-primary"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              )}
               <button
                 onClick={() => removeItem(item.id)}
                 className="p-1.5 text-muted-foreground hover:text-destructive"
