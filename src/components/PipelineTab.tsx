@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import CandidateCard from "./CandidateCard";
 import CandidateProfile from "./CandidateProfile";
+import PipelineChat from "./PipelineChat";
 import { computeScore, getScoreColor } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
@@ -647,6 +648,27 @@ export default function PipelineTab() {
     setBulkDeleteConfirm(false);
   };
 
+  const handleBulkTagFromChat = async (ids: string[], tags: string[]) => {
+    for (const id of ids) {
+      const candidate = candidates.find((c) => c.id === id);
+      if (!candidate) continue;
+      const current = candidate.tags || [];
+      const newTags = [...new Set([...current, ...tags.map((t) => t.startsWith("#") ? t : `#${t}`)])];
+      await supabase.from("candidates").update({ tags: newTags } as any).eq("id", id);
+      setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, tags: newTags } : c));
+    }
+  };
+
+  const handleBulkMoveFromChat = async (ids: string[], targetStage: string) => {
+    for (const id of ids) {
+      const c = candidates.find((x) => x.id === id);
+      const oldStage = c?.stage || "sourced";
+      await supabase.from("candidates").update({ stage: targetStage } as any).eq("id", id);
+      recordStageChange(id, oldStage, targetStage);
+    }
+    setCandidates((prev) => prev.map((c) => ids.includes(c.id) ? { ...c, stage: targetStage } : c));
+  };
+
   const allTags = Array.from(new Set(candidates.flatMap((c) => c.tags || [])));
 
   const stageCounts: Record<string, number> = {};
@@ -993,6 +1015,15 @@ export default function PipelineTab() {
           </div>
         </div>
       )}
+
+      {/* AI Chat */}
+      <PipelineChat
+        candidates={candidates}
+        selectedIds={selectedIds}
+        onBulkMove={handleBulkMoveFromChat}
+        onBulkTag={handleBulkTagFromChat}
+        onOutreach={handleOutreach}
+      />
     </div>
   );
 }
