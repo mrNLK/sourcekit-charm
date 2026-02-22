@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import CandidateCard from "./CandidateCard";
+import CandidateProfile from "./CandidateProfile";
 import { computeScore, getScoreColor } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
@@ -674,22 +675,21 @@ export default function PipelineTab() {
 
   // --- Detail Panel ---
   if (detailId && !detailCandidate) {
-    // Loading skeleton while candidate data resolves
     return (
       <div className="animate-slide-up space-y-4">
         <div className="flex items-center gap-3">
           <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />
+          <div className="h-20 w-20 rounded-full bg-muted animate-pulse" />
           <div className="flex-1 space-y-2">
-            <div className="h-5 w-40 bg-muted animate-pulse rounded" />
-            <div className="h-3 w-28 bg-muted animate-pulse rounded" />
+            <div className="h-6 w-48 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-32 bg-muted animate-pulse rounded" />
           </div>
         </div>
         {[1, 2, 3].map((i) => (
-          <div key={i} className="glass-card p-4 space-y-2">
-            <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+          <div key={i} className="glass-card p-5 space-y-2">
+            <div className="h-4 w-24 bg-muted animate-pulse rounded" />
             <div className="h-4 w-full bg-muted animate-pulse rounded" />
             <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
           </div>
@@ -699,310 +699,31 @@ export default function PipelineTab() {
   }
 
   if (detailCandidate) {
-    const c = detailCandidate;
-    const enrichment = c.enrichment_data || {};
-    const scoreColor = c.score !== null ? getScoreColor(c.score) : undefined;
-    const linkedinUrl = enrichment.contact_info?.linkedin || "";
-
     return (
-      <div className="animate-slide-up space-y-4">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <AvatarImg src={c.picture_url} name={c.name} size={12} />
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-foreground truncate">{c.name}</h1>
-            <p className="text-sm font-mono text-primary">{c.role || ""} {c.role && c.company ? "at" : ""} {c.company}</p>
-          </div>
-          {c.score !== null && (
-            <div className="h-12 w-12 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ backgroundColor: `${scoreColor}20`, color: scoreColor }}>
-              {c.score}
-            </div>
-          )}
-        </div>
-
-        {/* Actions row */}
-        <div className="flex gap-2">
-          {linkedinUrl && (
-            <a href={linkedinUrl} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" variant="outline" className="text-xs gap-1"><ExternalLink className="h-3 w-3" /> LinkedIn</Button>
-            </a>
-          )}
-          <select
-            value={c.stage}
-            onChange={(e) => handleStageChange(c.id, e.target.value)}
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-secondary border border-border text-foreground"
-          >
-            {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
-          </select>
-        </div>
-
-        {/* Enrichment summary */}
-        {enrichment.summary && (
-          <div className="glass-card p-4 space-y-2">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-primary" /> Summary</p>
-            <p className="text-sm text-secondary-foreground leading-relaxed">{enrichment.summary}</p>
-          </div>
-        )}
-
-        {/* EEA Signals */}
-        {enrichment.score_signals && (
-          <div className="glass-card p-4 space-y-3">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-primary" /> EEA Signals</p>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(enrichment.score_signals as Record<string, boolean>).map(([key, val]) => (
-                <span key={key} className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium border", val ? "bg-primary/15 text-primary border-primary/25" : "bg-secondary text-muted-foreground/50 border-border line-through")}>
-                  {key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}
-                </span>
-              ))}
-            </div>
-            {enrichment.evidence && Object.values(enrichment.evidence as Record<string, string>).some((v) => v) && (
-              <div className="space-y-1.5 pt-2 border-t border-border">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Evidence</p>
-                {Object.entries(enrichment.evidence as Record<string, string>).filter(([, v]) => v).map(([key, val]) => (
-                  <div key={key} className="flex items-start gap-2 text-xs">
-                    <span className="text-primary font-medium shrink-0">{key.replace(/_/g, " ").replace(/\bhas\b/g, "").trim()}</span>
-                    {val.startsWith("http") ? (
-                      <a href={val} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground truncate flex items-center gap-1">
-                        {val.replace(/https?:\/\/(www\.)?/, "").split("/").slice(0, 2).join("/")}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                      </a>
-                    ) : <span className="text-muted-foreground truncate">{val}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Skills */}
-        {enrichment.skills && Array.isArray(enrichment.skills) && enrichment.skills.length > 0 && (
-          <div className="glass-card p-4 space-y-2">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Code className="h-3.5 w-3.5 text-primary" /> Skills</p>
-            <div className="flex flex-wrap gap-1.5">
-              {enrichment.skills.map((s: string, i: number) => (
-                <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-border">{s}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Key Achievements */}
-        {enrichment.key_achievements && Array.isArray(enrichment.key_achievements) && enrichment.key_achievements.length > 0 && (
-          <div className="glass-card p-4 space-y-2">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Award className="h-3.5 w-3.5 text-primary" /> Key Achievements</p>
-            <ul className="space-y-1 list-disc pl-4">
-              {enrichment.key_achievements.map((a: string, i: number) => <li key={i} className="text-xs text-secondary-foreground">{a}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {/* Publications */}
-        {enrichment.publications && Array.isArray(enrichment.publications) && enrichment.publications.length > 0 && (
-          <div className="glass-card p-4 space-y-2">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5 text-primary" /> Publications</p>
-            <ul className="space-y-1 list-disc pl-4">
-              {enrichment.publications.map((p: any, i: number) => <li key={i} className="text-xs text-secondary-foreground">{typeof p === "string" ? p : p.title || JSON.stringify(p)}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {/* Education + Experience */}
-        <div className="grid grid-cols-2 gap-2">
-          {enrichment.education && (
-            <div className="glass-card p-4 space-y-1">
-              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><GraduationCap className="h-3.5 w-3.5 text-primary" /> Education</p>
-              <p className="text-xs text-secondary-foreground">{typeof enrichment.education === "string" ? enrichment.education : JSON.stringify(enrichment.education)}</p>
-            </div>
-          )}
-          {enrichment.experience_years != null && (
-            <div className="glass-card p-4 space-y-1">
-              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-primary" /> Experience</p>
-              <p className="text-xs text-secondary-foreground">{enrichment.experience_years} years</p>
-            </div>
-          )}
-        </div>
-
-        {/* Outreach */}
-        <div className="glass-card p-4 space-y-2">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5 text-primary" /> Outreach</p>
-          {outreachModal?.id === c.id && !outreachModal.loading ? (
-            <div className="space-y-2">
-              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{outreachModal.message}</p>
-              <div className="flex gap-2">
-                <Button size="sm" className="text-xs flex-1" onClick={async () => { await navigator.clipboard.writeText(outreachModal.message); setCopiedOutreach(true); toast({ title: "Copied" }); setTimeout(() => setCopiedOutreach(false), 2000); }}>
-                  {copiedOutreach ? <><Check className="h-3 w-3 mr-1" /> Copied</> : <><Copy className="h-3 w-3 mr-1" /> Copy</>}
-                </Button>
-                <Button size="sm" variant="outline" className="text-xs flex-1" onClick={handleRegenerateOutreach}><RefreshCw className="h-3 w-3 mr-1" /> Regenerate</Button>
-              </div>
-            </div>
-          ) : outreachModal?.id === c.id && outreachModal.loading ? (
-            <div className="flex items-center gap-2 py-3"><Loader2 className="h-4 w-4 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Generating...</span></div>
-          ) : (
-            <Button size="sm" variant="outline" className="text-xs w-full" onClick={() => handleOutreach(c)} disabled={!c.enrichment_data}>
-              <MessageSquare className="h-3.5 w-3.5 mr-1" /> Generate Outreach
-            </Button>
-          )}
-        </div>
-
-        {/* Outreach History */}
-        <div className="glass-card p-4 space-y-2">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-primary" /> Outreach History ({outreachHistory.length})
-          </p>
-          {loadingOutreachHistory ? (
-            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
-          ) : outreachHistory.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No outreach messages generated yet.</p>
-          ) : (
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {outreachHistory.map((oh) => (
-                <div key={oh.id} className="rounded-lg bg-secondary/60 border border-border p-3 space-y-1.5">
-                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{oh.message}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">
-                      {new Date(oh.created_at).toLocaleDateString()} {new Date(oh.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <button
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(oh.message);
-                        setCopiedHistoryId(oh.id);
-                        toast({ title: "Copied" });
-                        setTimeout(() => setCopiedHistoryId(null), 2000);
-                      }}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {copiedHistoryId === oh.id ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Notes Feed */}
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Notes ({candidateNotes.length})</p>
-          <div className="flex gap-2">
-            <Textarea
-              value={newNoteText}
-              onChange={(e) => setNewNoteText(e.target.value)}
-              placeholder="Add a note..."
-              className="bg-secondary border-border text-sm min-h-[40px] flex-1"
-              rows={2}
-              onFocus={(e) => { e.currentTarget.style.minHeight = "60px"; }}
-              onBlur={(e) => { if (!newNoteText) e.currentTarget.style.minHeight = "40px"; }}
-            />
-            <Button size="sm" className="text-xs shrink-0 self-end" onClick={() => addNote(c.id)} disabled={addingNote || !newNoteText.trim()}>
-              {addingNote ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />} Add
-            </Button>
-          </div>
-          {loadingNotes ? (
-            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
-          ) : (
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {candidateNotes.map((note) => (
-                <div key={note.id} className="rounded-lg bg-secondary/60 border border-border p-3 space-y-1">
-                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{note.content}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">{getRelativeTime(note.created_at)}</span>
-                    <button onClick={() => deleteNote(note.id, c.id)} className="text-muted-foreground hover:text-destructive transition-colors" title="Delete note">
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {/* Legacy note migration */}
-              {c.notes && candidateNotes.length === 0 && (
-                <div className="rounded-lg bg-secondary/40 border border-border border-dashed p-3 space-y-2">
-                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{c.notes}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground italic">(migrated)</span>
-                    <Button size="sm" variant="outline" className="text-[10px] h-6 px-2" onClick={() => migrateNote(c.id, c.notes!)}>
-                      Convert to new format
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Tags */}
-        <div className="glass-card p-4 space-y-2">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Tags</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(c.tags || []).map((tag) => (
-              <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
-                {tag}
-                <button onClick={() => handleRemoveTag(c.id, tag)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
-              </span>
-            ))}
-            {showTagInput === c.id ? (
-              <form onSubmit={(e) => { e.preventDefault(); handleAddTag(c.id); }} className="inline-flex">
-                <input autoFocus value={tagInput[c.id] || ""} onChange={(e) => setTagInput((prev) => ({ ...prev, [c.id]: e.target.value }))} onBlur={() => { handleAddTag(c.id); setShowTagInput(null); }} placeholder="#tag" className="w-20 px-2 py-0.5 rounded-full text-[10px] bg-secondary border border-border text-foreground outline-none focus:border-primary font-mono" />
-              </form>
-            ) : (
-              <button onClick={() => setShowTagInput(c.id)} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border hover:text-foreground"><Plus className="h-2.5 w-2.5" /> Add</button>
-            )}
-          </div>
-        </div>
-
-        {/* Timeline - stage changes + outreach interleaved */}
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-primary" /> Timeline</p>
-          {loadingTimeline ? (
-            <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-primary" /><span className="text-xs text-muted-foreground">Loading...</span></div>
-          ) : (
-            <div className="space-y-2 pl-3 border-l-2 border-border">
-              {timelineEvents.slice(0, timelineLimit).map((evt) => {
-                const stageColor = evt.to_stage
-                  ? evt.to_stage === "offer" ? "hsl(var(--primary))"
-                  : evt.to_stage === "screen" ? "hsl(48, 100%, 50%)"
-                  : evt.to_stage === "responded" ? "hsl(200, 100%, 50%)"
-                  : evt.to_stage === "contacted" ? "hsl(280, 70%, 60%)"
-                  : "hsl(var(--muted-foreground))"
-                  : "hsl(var(--primary))";
-
-                return (
-                  <div key={evt.id} className="relative flex items-start gap-2 -ml-[7px]">
-                    <div
-                      className="h-3 w-3 rounded-full shrink-0 mt-0.5 border-2 border-background"
-                      style={{ backgroundColor: evt.type === "outreach" ? "hsl(var(--primary))" : evt.type === "added" ? "hsl(var(--muted-foreground))" : stageColor }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      {evt.type === "stage_change" && (
-                        <p className="text-xs text-secondary-foreground">
-                          Moved from <span className="font-medium text-foreground">{STAGE_LABELS[evt.from_stage as Stage] || evt.from_stage}</span> to <span className="font-medium text-foreground">{STAGE_LABELS[evt.to_stage as Stage] || evt.to_stage}</span>
-                        </p>
-                      )}
-                      {evt.type === "outreach" && (
-                        <p className="text-xs text-secondary-foreground flex items-center gap-1"><MessageSquare className="h-3 w-3 text-primary" /> Outreach generated</p>
-                      )}
-                      {evt.type === "added" && (
-                        <p className="text-xs text-secondary-foreground">Added to pipeline</p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground">{getRelativeTime(evt.created_at)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-              {totalTimelineCount > timelineLimit && (
-                <button onClick={() => setTimelineLimit((l) => l + 20)} className="text-xs text-primary hover:underline ml-2">
-                  Show more ({totalTimelineCount - timelineLimit} remaining)
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Delete */}
-        <Button variant="destructive" size="sm" className="w-full text-xs" onClick={() => { handleDelete(c.id); setDetailId(null); }}>
-          <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove Candidate
-        </Button>
-      </div>
+      <CandidateProfile
+        candidate={detailCandidate}
+        onBack={() => setDetailId(null)}
+        onStageChange={handleStageChange}
+        onDelete={handleDelete}
+        onOutreach={handleOutreach}
+        onTagAdd={handleAddTag}
+        onTagRemove={handleRemoveTag}
+        tagInput={tagInput}
+        setTagInput={setTagInput}
+        showTagInput={showTagInput}
+        setShowTagInput={setShowTagInput}
+        outreachModal={outreachModal}
+        copiedOutreach={copiedOutreach}
+        onCopyOutreach={async () => {
+          if (outreachModal) {
+            await navigator.clipboard.writeText(outreachModal.message);
+            setCopiedOutreach(true);
+            toast({ title: "Copied" });
+            setTimeout(() => setCopiedOutreach(false), 2000);
+          }
+        }}
+        onRegenerateOutreach={handleRegenerateOutreach}
+      />
     );
   }
 
