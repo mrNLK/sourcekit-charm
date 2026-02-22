@@ -56,7 +56,7 @@ serve(async (req) => {
       const selected = selectedIds?.includes(c.id) ? " [SELECTED]" : "";
       const skills = c.enrichment_data?.skills?.slice(0, 5)?.join(", ") || "unknown";
       const score = c.score !== null ? c.score : "unscored";
-      return `- ${c.name}${selected} | ${c.role || "Unknown role"} @ ${c.company} | Stage: ${c.stage} | Score: ${score} | Skills: ${skills} | Tags: ${(c.tags || []).join(", ") || "none"}`;
+      return `- ID="${c.id}" | ${c.name}${selected} | ${c.role || "Unknown role"} @ ${c.company} | Stage: ${c.stage} | Score: ${score} | Skills: ${skills} | Tags: ${(c.tags || []).join(", ") || "none"}`;
     }).join("\n");
 
     const selectedCount = selectedIds?.length || 0;
@@ -64,6 +64,8 @@ serve(async (req) => {
     const systemPrompt = `You are SourceKit AI, a recruiting assistant embedded in a candidate pipeline tool. You help users work with their candidate lists.
 
 You have access to the following tools to perform bulk actions on candidates. Always use tools when the user wants to take action. You can combine text responses with tool calls.
+
+CRITICAL: When calling tools, you MUST use the exact UUID from the ID= field for candidate_ids. Never use names or slugs.
 
 CURRENT PIPELINE (${candidates?.length || 0} candidates, ${selectedCount} selected):
 ${candidateList || "No candidates in pipeline."}
