@@ -40,6 +40,8 @@ interface Candidate {
   notes: string | null;
   tags: string[] | null;
   picture_url?: string | null;
+  webhook_status?: string | null;
+  webhook_error?: string | null;
 }
 
 interface OutreachRecord {
@@ -89,8 +91,8 @@ function getRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// --- Webhook helper ---
-async function fireWebhookIfContacted(candidate: Candidate, userId: string) {
+// --- Webhook helper --- returns {success, error?} for UI feedback
+async function fireWebhookIfContacted(candidate: Candidate, userId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const { data: setting } = await supabase
       .from("settings")
@@ -99,9 +101,9 @@ async function fireWebhookIfContacted(candidate: Candidate, userId: string) {
       .eq("key", "webhook_url")
       .maybeSingle();
     const url = (setting as any)?.value;
-    if (!url) return;
+    if (!url) return { success: true }; // no URL configured, silently skip
     const linkedinUrl = candidate.enrichment_data?.contact_info?.linkedin || "";
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -116,8 +118,18 @@ async function fireWebhookIfContacted(candidate: Candidate, userId: string) {
         tags: candidate.tags,
       }),
     });
-  } catch (err) {
+    if (!res.ok) {
+      const errMsg = `HTTP ${res.status}`;
+      await supabase.from("candidates").update({ webhook_status: "failed", webhook_error: errMsg } as any).eq("id", candidate.id);
+      return { success: false, error: errMsg };
+    }
+    await supabase.from("candidates").update({ webhook_status: "success", webhook_error: null } as any).eq("id", candidate.id);
+    return { success: true };
+  } catch (err: any) {
+    const errMsg = err.message || "Network error";
     console.error("Webhook error:", err);
+    await supabase.from("candidates").update({ webhook_status: "failed", webhook_error: errMsg } as any).eq("id", candidate.id);
+    return { success: false, error: errMsg };
   }
 }
 
@@ -389,8 +401,36 @@ export default function PipelineTab() {
     } else {
       setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, stage: newStage } : c));
       recordStageChange(id, oldStage, newStage);
-      if (newStage === "contacted" && user) {
-        if (candidate) fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
+      if (newStage === "contacted" && user && candidate) {
+        const result = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
+        if (result.success) {
+          // Check if webhook URL was configured (success with no status update means no URL)
+          const updated = { ...candidate, stage: newStage, webhook_status: "success" as string | null, webhook_error: null as string | null };
+          // Only show toast if webhook actually fired (check if setting exists)
+          const { data: setting } = await supabase.from("settings").select("value").eq("user_id", user.id).eq("key", "webhook_url").maybeSingle();
+          if ((setting as any)?.value) {
+            setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c));
+            toast({ title: `Webhook fired for ${candidate.name}` });
+          }
+        } else {
+          setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "failed", webhook_error: result.error || null } : c));
+          toast({
+            title: `Webhook failed for ${candidate.name}`,
+            description: result.error,
+            variant: "destructive",
+            action: (
+              <Button size="sm" variant="outline" className="text-xs" onClick={async () => {
+                const retry = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
+                if (retry.success) {
+                  setCandidates((prev) => prev.map((c) => c.id === id ? { ...c, webhook_status: "success", webhook_error: null } : c));
+                  toast({ title: `Webhook fired for ${candidate.name}` });
+                }
+              }}>
+                Retry
+              </Button>
+            ),
+          });
+        }
       }
     }
   };
@@ -494,13 +534,28 @@ export default function PipelineTab() {
     } catch { toast({ title: "Failed to share", variant: "destructive" }); }
   };
 
+  const escapeCsvValue = (val: string): string => {
+    if (val.includes('"') || val.includes(',') || val.includes('\n') || val.includes('\r')) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return val;
+  };
+
   const buildCsvRows = (list: Candidate[]) => {
-    const header = ["Name", "Company", "Title", "Score", "LinkedIn URL", "Stage", "Tags", "Notes", "Date Added"];
+    const header = ["name", "current_role", "company", "stage", "score", "linkedin_url", "email", "skills", "summary", "created_at", "notes"];
     const rows = list.map((c) => {
-      const linkedinUrl = c.enrichment_data?.contact_info?.linkedin || "";
-      return [c.name, c.company, c.role || "", c.score?.toString() || "", linkedinUrl, STAGE_LABELS[c.stage as Stage] || c.stage, (c.tags || []).join(", "), (c.notes || "").replace(/[\n\r,]/g, " "), new Date(c.created_at).toLocaleDateString()];
+      const enrichment = c.enrichment_data || {};
+      const linkedinUrl = enrichment.contact_info?.linkedin || "";
+      const email = enrichment.contact_info?.email || "";
+      const skills = Array.isArray(enrichment.skills) ? enrichment.skills.join(", ") : "";
+      const summary = enrichment.summary || "";
+      return [
+        c.name, c.role || "", c.company, STAGE_LABELS[c.stage as Stage] || c.stage,
+        c.score?.toString() || "", linkedinUrl, email, skills, summary,
+        new Date(c.created_at).toISOString().split("T")[0], c.notes || ""
+      ];
     });
-    return [header, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+    return [header, ...rows].map((r) => r.map((v) => escapeCsvValue(v)).join(",")).join("\n");
   };
 
   const downloadCsv = (csv: string, filename: string) => {
@@ -512,8 +567,12 @@ export default function PipelineTab() {
   };
 
   const handleExportCsv = () => {
-    downloadCsv(buildCsvRows(filtered), `sourcekit-pipeline-${new Date().toISOString().split("T")[0]}.csv`);
-    toast({ title: "CSV exported" });
+    if (candidates.length === 0) {
+      toast({ title: "No candidates to export" });
+      return;
+    }
+    downloadCsv(buildCsvRows(candidates), `sourcekit-pipeline-${new Date().toISOString().split("T")[0]}.csv`);
+    toast({ title: `Exported ${candidates.length} candidates` });
   };
 
   const toggleSelect = (id: string) => {
@@ -542,11 +601,31 @@ export default function PipelineTab() {
     if (targetStage === "contacted" && user) {
       for (const id of ids) {
         const c = candidates.find((x) => x.id === id);
-        if (c) fireWebhookIfContacted({ ...c, stage: targetStage }, user.id);
+        if (c) {
+          const result = await fireWebhookIfContacted({ ...c, stage: targetStage }, user.id);
+          setCandidates((prev) => prev.map((x) => x.id === id ? { ...x, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null } : x));
+          if (result.success) {
+            const { data: setting } = await supabase.from("settings").select("value").eq("user_id", user.id).eq("key", "webhook_url").maybeSingle();
+            if ((setting as any)?.value) toast({ title: `Webhook fired for ${c.name}` });
+          } else {
+            toast({ title: `Webhook failed for ${c.name}`, description: result.error, variant: "destructive" });
+          }
+        }
       }
     }
     toast({ title: `Moved ${ids.length} candidates to ${STAGE_LABELS[targetStage as Stage] || targetStage}` });
     setSelectedIds(new Set());
+  };
+
+  const retryWebhook = async (candidate: Candidate) => {
+    if (!user) return;
+    const result = await fireWebhookIfContacted(candidate, user.id);
+    setCandidates((prev) => prev.map((c) => c.id === candidate.id ? { ...c, webhook_status: result.success ? "success" : "failed", webhook_error: result.error || null } : c));
+    if (result.success) {
+      toast({ title: `Webhook fired for ${candidate.name}` });
+    } else {
+      toast({ title: `Webhook failed for ${candidate.name}`, description: result.error, variant: "destructive" });
+    }
   };
 
   const handleBulkExport = () => {
@@ -1102,8 +1181,18 @@ export default function PipelineTab() {
                             {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">{STAGE_LABELS[c.stage as Stage] || c.stage}</span>
+                          {c.stage === "contacted" && c.webhook_status === "success" && (
+                            <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Webhook sent" />
+                          )}
+                          {c.stage === "contacted" && c.webhook_status === "failed" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); retryWebhook(c); }}
+                              className="h-2 w-2 rounded-full bg-red-500 shrink-0 cursor-pointer"
+                              title={`Webhook failed${c.webhook_error ? `: ${c.webhook_error}` : ""} - click to retry`}
+                            />
+                          )}
                           {next && (
                             <button onClick={(e) => { e.stopPropagation(); handleStageChange(c.id, next); }} className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors" title={`Move to ${STAGE_LABELS[next as Stage]}`}>
                               <ArrowRight className="h-3.5 w-3.5" />

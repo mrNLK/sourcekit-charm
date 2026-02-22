@@ -60,6 +60,8 @@ export type Database = {
           score: number | null
           stage: string
           tags: string[] | null
+          webhook_error: string | null
+          webhook_status: string | null
         }
         Insert: {
           company: string
@@ -74,6 +76,8 @@ export type Database = {
           score?: number | null
           stage?: string
           tags?: string[] | null
+          webhook_error?: string | null
+          webhook_status?: string | null
         }
         Update: {
           company?: string
@@ -88,6 +92,8 @@ export type Database = {
           score?: number | null
           stage?: string
           tags?: string[] | null
+          webhook_error?: string | null
+          webhook_status?: string | null
         }
         Relationships: []
       }
