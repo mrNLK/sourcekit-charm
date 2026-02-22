@@ -1259,13 +1259,13 @@ export default function SearchTab({
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setResearchData((prev) => ({
-                                      ...prev,
+                                    setResearchData({
+                                      ...researchData,
                                       search_criteria: {
-                                        ...prev.search_criteria,
-                                        keywords: prev.search_criteria.keywords.filter((_, idx) => idx !== i),
+                                        ...researchData.search_criteria,
+                                        keywords: researchData.search_criteria.keywords.filter((_, idx) => idx !== i),
                                       },
-                                    }))
+                                    })
                                   }
                                   className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400 transition-all cursor-pointer"
                                 >
@@ -1278,13 +1278,13 @@ export default function SearchTab({
                               onClick={() => {
                                 const v = prompt("Add search criterion:");
                                 if (v && v.trim())
-                                  setResearchData((prev) => ({
-                                    ...prev,
+                                  setResearchData({
+                                    ...researchData,
                                     search_criteria: {
-                                      ...prev.search_criteria,
-                                      keywords: [...prev.search_criteria.keywords, v.trim()],
+                                      ...researchData.search_criteria,
+                                      keywords: [...researchData.search_criteria.keywords, v.trim()],
                                     },
-                                  }));
+                                  });
                               }}
                               className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 text-primary/60 hover:text-primary hover:border-primary px-3 py-1 text-xs transition-colors cursor-pointer"
                             >
