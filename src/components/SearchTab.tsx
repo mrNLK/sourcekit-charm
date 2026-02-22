@@ -4,7 +4,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, Search, Save, Check, FlaskConical, Building2, FileText, ChevronDown, ChevronRight, ArrowRight, Bookmark, ExternalLink, LayoutList, LayoutGrid, RefreshCw, Trash2, Clock, Play, AlertTriangle, Clipboard, Copy } from "lucide-react";
+import {
+  Loader2,
+  Sparkles,
+  Search,
+  Save,
+  Check,
+  FlaskConical,
+  Building2,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  ArrowRight,
+  Bookmark,
+  ExternalLink,
+  LayoutList,
+  LayoutGrid,
+  RefreshCw,
+  Trash2,
+  Clock,
+  Play,
+  AlertTriangle,
+  Clipboard,
+  Copy,
+  X,
+  Plus,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import CandidateCard from "./CandidateCard";
@@ -55,9 +80,20 @@ interface SearchTabProps {
 }
 
 function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[] } {
-  const output = data?.research_output || data?.result_data?.output || data?.output || data?.result || data?.data || data?.response || "";
+  const output =
+    data?.research_output ||
+    data?.result_data?.output ||
+    data?.output ||
+    data?.result ||
+    data?.data ||
+    data?.response ||
+    "";
   const text = typeof output === "string" ? output : JSON.stringify(output);
-  const basis: ResearchBasis[] = Array.isArray(data?.basis) ? data.basis : Array.isArray(data?.result_data?.basis) ? data.result_data.basis : [];
+  const basis: ResearchBasis[] = Array.isArray(data?.basis)
+    ? data.basis
+    : Array.isArray(data?.result_data?.basis)
+      ? data.result_data.basis
+      : [];
 
   const companies: { name: string; rationale: string }[] = [];
   const eeaSignals: string[] = [];
@@ -101,14 +137,30 @@ function parseResearchOutput(data: any): ResearchData & { basis?: ResearchBasis[
           }
         }
       }
-    } else if (titleLower.includes("eea") || titleLower.includes("evidence") || titleLower.includes("exceptional") || titleLower.includes("signal")) {
+    } else if (
+      titleLower.includes("eea") ||
+      titleLower.includes("evidence") ||
+      titleLower.includes("exceptional") ||
+      titleLower.includes("signal")
+    ) {
       for (const line of lines) {
-        const cleaned = line.replace(/^[-•*\d.]+\s*/, "").replace(/\*\*/g, "").trim();
+        const cleaned = line
+          .replace(/^[-•*\d.]+\s*/, "")
+          .replace(/\*\*/g, "")
+          .trim();
         if (cleaned.length > 3) eeaSignals.push(cleaned);
       }
-    } else if (titleLower.includes("search") || titleLower.includes("keyword") || titleLower.includes("criteria") || titleLower.includes("skill")) {
+    } else if (
+      titleLower.includes("search") ||
+      titleLower.includes("keyword") ||
+      titleLower.includes("criteria") ||
+      titleLower.includes("skill")
+    ) {
       for (const line of lines) {
-        const cleaned = line.replace(/^[-•*\d.]+\s*/, "").replace(/\*\*/g, "").trim();
+        const cleaned = line
+          .replace(/^[-•*\d.]+\s*/, "")
+          .replace(/\*\*/g, "")
+          .trim();
         if (cleaned.length > 2) keywords.push(cleaned);
       }
     }
@@ -167,18 +219,25 @@ function detectSource(url: string, description?: string): string {
 
 function getSourceLabel(source: string): string {
   switch (source) {
-    case "linkedin": return "LinkedIn";
-    case "github": return "GitHub";
-    case "X": return "X";
-    default: return "Web";
+    case "linkedin":
+      return "LinkedIn";
+    case "github":
+      return "GitHub";
+    case "X":
+      return "X";
+    default:
+      return "Web";
   }
 }
 
 function getSourceBadgeStyle(source: string): string {
   switch (source) {
-    case "linkedin": return "bg-[hsl(201,100%,35%)]/20 text-[hsl(201,100%,55%)]";
-    case "github": return "bg-muted text-muted-foreground";
-    default: return "bg-muted text-muted-foreground";
+    case "linkedin":
+      return "bg-[hsl(201,100%,35%)]/20 text-[hsl(201,100%,55%)]";
+    case "github":
+      return "bg-muted text-muted-foreground";
+    default:
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -212,18 +271,22 @@ function parseNameFromDescription(desc: string): string {
   if (commaAMatch) return commaAMatch[1].trim();
   const dashMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*[-–|]\s+/);
   if (dashMatch) return dashMatch[1].trim();
-  const worksMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/);
+  const worksMatch = desc.match(
+    /^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:works|currently|has been|joined|leads|manages|specializes)/,
+  );
   if (worksMatch) return worksMatch[1].trim();
   const commaMatch = desc.match(/^([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,/);
   if (commaMatch) return commaMatch[1].trim();
   const snippet = desc.substring(0, 200);
-  const titleContextMatch = snippet.match(/([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/);
+  const titleContextMatch = snippet.match(
+    /([A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(?:is|was|serves as|holds|has)\s+(?:a|an|the)\s+(?:Senior|Staff|Principal|Lead|Head|Chief|Director|VP|Manager|Engineer|Scientist|Researcher)/,
+  );
   if (titleContextMatch) return titleContextMatch[1].trim();
   const firstLine = desc.split("\n")[0].trim();
   if (firstLine.length < 60 && /^[A-Z]/.test(firstLine)) {
     const cleaned = firstLine.replace(/[-|:;].*$/, "").trim();
     const words = cleaned.split(/\s+/);
-    if (words.length >= 2 && words.length <= 4 && words.every(w => /^[A-Z]/.test(w))) {
+    if (words.length >= 2 && words.length <= 4 && words.every((w) => /^[A-Z]/.test(w))) {
       return cleaned;
     }
   }
@@ -237,18 +300,30 @@ function parseMetadata(description: string): { title: string; company: string; l
   let headline = "";
   if (!description) return { title, company, location, headline };
   const isAtMatch = description.match(/is\s+(?:a |an )?(.+?)\s+at\s+([^.,:;]+)/i);
-  if (isAtMatch) { title = isAtMatch[1].trim(); company = isAtMatch[2].trim(); }
+  if (isAtMatch) {
+    title = isAtMatch[1].trim();
+    company = isAtMatch[2].trim();
+  }
   if (!title) {
     const atMatch = description.match(/^([^.,:]+?)\s+at\s+([^.,:]+)/i);
-    if (atMatch) { title = atMatch[1].trim(); company = atMatch[2].trim(); }
+    if (atMatch) {
+      title = atMatch[1].trim();
+      company = atMatch[2].trim();
+    }
   }
   if (!title) {
     const commaMatch = description.match(/^([^.]+?),\s+([^.]+)/);
-    if (commaMatch && commaMatch[1].length < 60) { title = commaMatch[1].trim(); company = commaMatch[2].trim(); }
+    if (commaMatch && commaMatch[1].length < 60) {
+      title = commaMatch[1].trim();
+      company = commaMatch[2].trim();
+    }
   }
   if (!title) {
     const dashMatch = description.match(/^([^-]+?)\s+-\s+(.+)/);
-    if (dashMatch && dashMatch[1].length < 40) { company = dashMatch[1].trim(); title = dashMatch[2].trim(); }
+    if (dashMatch && dashMatch[1].length < 40) {
+      company = dashMatch[1].trim();
+      title = dashMatch[2].trim();
+    }
   }
   const locMatch = description.match(/(?:based in|located in|from)\s+([^.,:;]+)/i);
   if (locMatch) location = locMatch[1].trim();
@@ -328,7 +403,7 @@ export default function SearchTab({
   const [searchLocation, setSearchLocation] = useState("");
   const [searchSkills, setSearchSkills] = useState("");
   const [searchStatus, setSearchStatus] = useState<SearchStatus>(
-    persistedSearchResults && persistedSearchResults.length > 0 ? "done" : "idle"
+    persistedSearchResults && persistedSearchResults.length > 0 ? "done" : "idle",
   );
   const [searchResults, setSearchResultsLocal] = useState<SearchResult[]>(persistedSearchResults || []);
   const [websetId, setWebsetId] = useState<string | null>(null);
@@ -392,23 +467,32 @@ export default function SearchTab({
   const { user } = useAuth();
 
   // Wrapper to sync local and parent state for search results
-  const setSearchResults = useCallback((updater: SearchResult[] | ((prev: SearchResult[]) => SearchResult[])) => {
-    setSearchResultsLocal((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      onSearchResultsChange?.(next);
-      return next;
-    });
-  }, [onSearchResultsChange]);
+  const setSearchResults = useCallback(
+    (updater: SearchResult[] | ((prev: SearchResult[]) => SearchResult[])) => {
+      setSearchResultsLocal((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        onSearchResultsChange?.(next);
+        return next;
+      });
+    },
+    [onSearchResultsChange],
+  );
 
-  const setResearchData = useCallback((data: ResearchData | null) => {
-    setResearchDataLocal(data);
-    onResearchDataChange?.(data);
-  }, [onResearchDataChange]);
+  const setResearchData = useCallback(
+    (data: ResearchData | null) => {
+      setResearchDataLocal(data);
+      onResearchDataChange?.(data);
+    },
+    [onResearchDataChange],
+  );
 
-  const setResearchRaw = useCallback((raw: any) => {
-    setResearchRawLocal(raw);
-    onResearchRawChange?.(raw);
-  }, [onResearchRawChange]);
+  const setResearchRaw = useCallback(
+    (raw: any) => {
+      setResearchRawLocal(raw);
+      onResearchRawChange?.(raw);
+    },
+    [onResearchRawChange],
+  );
 
   // Restore search query from persisted
   useEffect(() => {
@@ -519,7 +603,11 @@ export default function SearchTab({
       if (error) throw error;
       setResult(data);
     } catch (err: any) {
-      toast({ title: "Enrichment failed", description: err.message || "Could not reach the enrichment API.", variant: "destructive" });
+      toast({
+        title: "Enrichment failed",
+        description: err.message || "Could not reach the enrichment API.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -545,79 +633,86 @@ export default function SearchTab({
   };
 
   // ---- Search mode (Websets) ----
-  const pollWebset = useCallback(async (wsId: string) => {
-    const elapsed = Date.now() - pollStartRef.current;
-    if (elapsed > 120000) {
-      setSearchStatus("error");
-      toast({ title: "Search timed out", description: "The search took too long. Try a more specific query.", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.functions.invoke("search-candidates", {
-        body: { action: "poll-webset", websetId: wsId },
-      });
-
-      if (error) throw error;
-
-      const items = data?.items || [];
-      const websetStatus = data?.websetStatus || "unknown";
-
-      if (items.length > 0) {
-        const results: SearchResult[] = items.map((item: any) => {
-          const url = item.url || "";
-          const desc = item.description || "";
-          const person = item.person;
-          const rawName = item.name || parseNameFromDescription(desc) || extractNameFromUrl(url) || "";
-          const meta = parseMetadata(desc);
-          const signals = extractSignals(desc);
-          return {
-            id: item.id || crypto.randomUUID(),
-            name: rawName,
-            url,
-            description: desc,
-            source: detectSource(url, desc),
-            company: person?.company || meta.company,
-            role: person?.position || meta.title,
-            location: person?.location || meta.location,
-            headline: meta.headline,
-            signals,
-            pictureUrl: item.pictureUrl || person?.pictureUrl || "",
-            duplicate: item.duplicate || false,
-          };
+  const pollWebset = useCallback(
+    async (wsId: string) => {
+      const elapsed = Date.now() - pollStartRef.current;
+      if (elapsed > 120000) {
+        setSearchStatus("error");
+        toast({
+          title: "Search timed out",
+          description: "The search took too long. Try a more specific query.",
+          variant: "destructive",
         });
-        setSearchResults(sortResults(results));
-        setSearchStatus("done");
-        onSearchQueryChange?.(searchRole);
-        saveSearchHistory(
-          { role: searchRole, company: searchCompany, location: searchLocation, skills: searchSkills },
-          results.length
-        );
         return;
       }
 
-      if (websetStatus === "completed" || websetStatus === "idle") {
-        setSearchResults([]);
-        setSearchStatus("done");
-        toast({ title: "No results", description: "No candidates found. Try different criteria." });
-        return;
-      }
+      try {
+        const { data, error } = await supabase.functions.invoke("search-candidates", {
+          body: { action: "poll-webset", websetId: wsId },
+        });
 
-      pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
-    } catch (err: any) {
-      console.error("Poll error:", err);
-      // Check for auth errors
-      if (err.message?.includes("JWT") || err.message?.includes("401") || err.message?.includes("token")) {
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          setSearchStatus("error");
-          toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+        if (error) throw error;
+
+        const items = data?.items || [];
+        const websetStatus = data?.websetStatus || "unknown";
+
+        if (items.length > 0) {
+          const results: SearchResult[] = items.map((item: any) => {
+            const url = item.url || "";
+            const desc = item.description || "";
+            const person = item.person;
+            const rawName = item.name || parseNameFromDescription(desc) || extractNameFromUrl(url) || "";
+            const meta = parseMetadata(desc);
+            const signals = extractSignals(desc);
+            return {
+              id: item.id || crypto.randomUUID(),
+              name: rawName,
+              url,
+              description: desc,
+              source: detectSource(url, desc),
+              company: person?.company || meta.company,
+              role: person?.position || meta.title,
+              location: person?.location || meta.location,
+              headline: meta.headline,
+              signals,
+              pictureUrl: item.pictureUrl || person?.pictureUrl || "",
+              duplicate: item.duplicate || false,
+            };
+          });
+          setSearchResults(sortResults(results));
+          setSearchStatus("done");
+          onSearchQueryChange?.(searchRole);
+          saveSearchHistory(
+            { role: searchRole, company: searchCompany, location: searchLocation, skills: searchSkills },
+            results.length,
+          );
           return;
         }
+
+        if (websetStatus === "completed" || websetStatus === "idle") {
+          setSearchResults([]);
+          setSearchStatus("done");
+          toast({ title: "No results", description: "No candidates found. Try different criteria." });
+          return;
+        }
+
+        pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
+      } catch (err: any) {
+        console.error("Poll error:", err);
+        // Check for auth errors
+        if (err.message?.includes("JWT") || err.message?.includes("401") || err.message?.includes("token")) {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            setSearchStatus("error");
+            toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+            return;
+          }
+        }
+        pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
       }
-      pollTimerRef.current = setTimeout(() => pollWebset(wsId), 5000);
-    }
-  }, [toast, searchRole, searchCompany, searchLocation, searchSkills]);
+    },
+    [toast, searchRole, searchCompany, searchLocation, searchSkills],
+  );
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -654,7 +749,11 @@ export default function SearchTab({
       pollTimerRef.current = setTimeout(() => pollWebset(wsId), 3000);
     } catch (err: any) {
       setSearchStatus("error");
-      toast({ title: "Search failed", description: err.message || "Could not initiate search.", variant: "destructive" });
+      toast({
+        title: "Search failed",
+        description: err.message || "Could not initiate search.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -684,10 +783,14 @@ export default function SearchTab({
       setEnrichedIdx(idx);
       // Update the search results with enrichment data
       setSearchResults((prev) =>
-        prev.map((r, i) => i === idx ? { ...r, enrichmentData: data, autoEnriched: false } : r)
+        prev.map((r, i) => (i === idx ? { ...r, enrichmentData: data, autoEnriched: false } : r)),
       );
     } catch (err: any) {
-      toast({ title: "Enrichment failed", description: err.message || "Could not enrich candidate.", variant: "destructive" });
+      toast({
+        title: "Enrichment failed",
+        description: err.message || "Could not enrich candidate.",
+        variant: "destructive",
+      });
     } finally {
       setEnrichingIdx(null);
     }
@@ -695,8 +798,7 @@ export default function SearchTab({
 
   // ---- Batch enrich ----
   const handleBatchEnrich = async () => {
-    const toProcess = searchResults
-      .map((r, i) => ({ result: r, idx: i }));
+    const toProcess = searchResults.map((r, i) => ({ result: r, idx: i }));
     const unenriched = toProcess.filter(({ result }) => !result.enrichmentData);
     const alreadyEnriched = toProcess.length - unenriched.length;
 
@@ -726,12 +828,16 @@ export default function SearchTab({
         });
         if (!error && data) {
           setSearchResults((prev) =>
-            prev.map((r, i) => i === idx ? { ...r, enrichmentData: data, autoEnriched: true } : r)
+            prev.map((r, i) => (i === idx ? { ...r, enrichmentData: data, autoEnriched: true } : r)),
           );
         }
       } catch (err: any) {
         console.error(`Batch enrich failed for ${candidate.name}:`, err);
-        toast({ title: `Enrich failed: ${candidate.name}`, description: err.message || "API error", variant: "destructive" });
+        toast({
+          title: `Enrich failed: ${candidate.name}`,
+          description: err.message || "API error",
+          variant: "destructive",
+        });
       }
       if (!batchCancelRef.current) {
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -791,73 +897,83 @@ export default function SearchTab({
     };
   }, []);
 
-  const pollResearch = useCallback(async (runId: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke("research-role", {
-        body: { action: "poll", run_id: runId },
-      });
-      if (error) throw error;
+  const pollResearch = useCallback(
+    async (runId: string) => {
+      try {
+        const { data, error } = await supabase.functions.invoke("research-role", {
+          body: { action: "poll", run_id: runId },
+        });
+        if (error) throw error;
 
-      researchPollCountRef.current++;
-      const count = researchPollCountRef.current;
+        researchPollCountRef.current++;
+        const count = researchPollCountRef.current;
 
-      if (count < 6) setResearchProgress("Research started...");
-      else if (count < 15) setResearchProgress("Analyzing role...");
-      else if (count < 30) setResearchProgress("Mapping target companies...");
-      else setResearchProgress("Deep research in progress...");
+        if (count < 6) setResearchProgress("Research started...");
+        else if (count < 15) setResearchProgress("Analyzing role...");
+        else if (count < 30) setResearchProgress("Mapping target companies...");
+        else setResearchProgress("Deep research in progress...");
 
-      if (data?.status === "completed") {
-        if (researchPollRef.current) clearInterval(researchPollRef.current);
-        researchPollRef.current = null;
-        setResearching(false);
-        setResearchRunId(null);
-        setResearchProgress("");
-        setResearchRaw(data);
-        const parsed = parseResearchOutput(data);
-        setResearchData(parsed);
-        if (parsed.target_companies?.length) {
-          const jobTitle = resJobTitle.trim() || "Engineer";
-          const suggestions = parsed.target_companies
-            .slice(0, 5)
-            .map((c) => `${jobTitle} at ${c.name}`);
-          setSuggestedSearches(suggestions);
+        if (data?.status === "completed") {
+          if (researchPollRef.current) clearInterval(researchPollRef.current);
+          researchPollRef.current = null;
+          setResearching(false);
+          setResearchRunId(null);
+          setResearchProgress("");
+          setResearchRaw(data);
+          const parsed = parseResearchOutput(data);
+          setResearchData(parsed);
+          if (parsed.target_companies?.length) {
+            const jobTitle = resJobTitle.trim() || "Engineer";
+            const suggestions = parsed.target_companies.slice(0, 5).map((c) => `${jobTitle} at ${c.name}`);
+            setSuggestedSearches(suggestions);
+          }
+          // Log research to search history
+          const researchQuery = resJobTitle.trim()
+            ? `${resJobTitle.trim()} at ${resCompanyName.trim()}`
+            : "Job spec research";
+          const rawSummary = parsed.raw ? parsed.raw.substring(0, 500) : "";
+          saveSearchHistory({ role: resJobTitle.trim(), company: resCompanyName.trim() }, 0, "research", {
+            role: resJobTitle.trim(),
+            company: resCompanyName.trim(),
+            summary: rawSummary,
+          });
+          return;
         }
-        // Log research to search history
-        const researchQuery = resJobTitle.trim() ? `${resJobTitle.trim()} at ${resCompanyName.trim()}` : "Job spec research";
-        const rawSummary = parsed.raw ? parsed.raw.substring(0, 500) : "";
-        saveSearchHistory(
-          { role: resJobTitle.trim(), company: resCompanyName.trim() },
-          0,
-          "research",
-          { role: resJobTitle.trim(), company: resCompanyName.trim(), summary: rawSummary }
-        );
-        return;
-      }
 
-      if (data?.status === "failed") {
-        if (researchPollRef.current) clearInterval(researchPollRef.current);
-        researchPollRef.current = null;
-        setResearching(false);
-        setResearchRunId(null);
-        setResearchProgress("");
-        toast({ title: "Research failed", description: data.error || "The research task failed.", variant: "destructive" });
-        return;
-      }
+        if (data?.status === "failed") {
+          if (researchPollRef.current) clearInterval(researchPollRef.current);
+          researchPollRef.current = null;
+          setResearching(false);
+          setResearchRunId(null);
+          setResearchProgress("");
+          toast({
+            title: "Research failed",
+            description: data.error || "The research task failed.",
+            variant: "destructive",
+          });
+          return;
+        }
 
-      if (count >= 60) {
-        if (researchPollRef.current) clearInterval(researchPollRef.current);
-        researchPollRef.current = null;
-        setResearching(false);
-        setResearchProgress("");
-        toast({ title: "Research timed out", description: "The research took too long. Try again or use a simpler query.", variant: "destructive" });
+        if (count >= 60) {
+          if (researchPollRef.current) clearInterval(researchPollRef.current);
+          researchPollRef.current = null;
+          setResearching(false);
+          setResearchProgress("");
+          toast({
+            title: "Research timed out",
+            description: "The research took too long. Try again or use a simpler query.",
+            variant: "destructive",
+          });
+        }
+      } catch (err: any) {
+        console.error("Research poll error:", err);
+        if (err.message?.includes("JWT") || err.message?.includes("401")) {
+          await supabase.auth.refreshSession();
+        }
       }
-    } catch (err: any) {
-      console.error("Research poll error:", err);
-      if (err.message?.includes("JWT") || err.message?.includes("401")) {
-        await supabase.auth.refreshSession();
-      }
-    }
-  }, [toast]);
+    },
+    [toast],
+  );
 
   const handleResearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -895,7 +1011,11 @@ export default function SearchTab({
     } catch (err: any) {
       setResearching(false);
       setResearchProgress("");
-      toast({ title: "Research failed", description: err.message || "Could not start research.", variant: "destructive" });
+      toast({
+        title: "Research failed",
+        description: err.message || "Could not start research.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -923,7 +1043,12 @@ export default function SearchTab({
       setSearchSkills(researchData.search_criteria.keywords.slice(0, 5).join(", "));
     }
     if (researchData?.target_companies && researchData.target_companies.length > 0) {
-      setSearchCompany(researchData.target_companies.slice(0, 3).map((c) => c.name).join(", "));
+      setSearchCompany(
+        researchData.target_companies
+          .slice(0, 3)
+          .map((c) => c.name)
+          .join(", "),
+      );
     }
     setSearchRole(resJobTitle.trim() || "");
     setMode("search");
@@ -956,18 +1081,16 @@ export default function SearchTab({
 
       {/* Mode Toggle */}
       <div className="flex rounded-lg border border-border bg-secondary p-1 gap-1">
-        {([
+        {[
           { key: "research" as Mode, icon: FlaskConical, label: "Research" },
           { key: "search" as Mode, icon: Search, label: "Search" },
           { key: "enrich" as Mode, icon: Sparkles, label: "Enrich" },
-        ]).map(({ key, icon: Icon, label }) => (
+        ].map(({ key, icon: Icon, label }) => (
           <button
             key={key}
             onClick={() => setMode(key)}
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
-              mode === key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+              mode === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Icon className="h-4 w-4" />
@@ -1011,27 +1134,56 @@ export default function SearchTab({
                     Job Title *
                     {!resJobTitle && settingsRole && <span className="text-primary/60 ml-1">(from Settings)</span>}
                   </Label>
-                  <Input id="resJobTitle" value={resJobTitle} onChange={(e) => setResJobTitle(e.target.value)} placeholder={settingsRole || "ML Engineer"} required className="bg-secondary border-border" />
+                  <Input
+                    id="resJobTitle"
+                    value={resJobTitle}
+                    onChange={(e) => setResJobTitle(e.target.value)}
+                    placeholder={settingsRole || "ML Engineer"}
+                    required
+                    className="bg-secondary border-border"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="resCompanyName" className="text-xs">
                     Company *
-                    {!resCompanyName && settingsCompany && <span className="text-primary/60 ml-1">(from Settings)</span>}
+                    {!resCompanyName && settingsCompany && (
+                      <span className="text-primary/60 ml-1">(from Settings)</span>
+                    )}
                   </Label>
-                  <Input id="resCompanyName" value={resCompanyName} onChange={(e) => setResCompanyName(e.target.value)} placeholder={settingsCompany || "Anthropic"} required className="bg-secondary border-border" />
+                  <Input
+                    id="resCompanyName"
+                    value={resCompanyName}
+                    onChange={(e) => setResCompanyName(e.target.value)}
+                    placeholder={settingsCompany || "Anthropic"}
+                    required
+                    className="bg-secondary border-border"
+                  />
                 </div>
               </div>
             ) : (
               <div className="space-y-1.5">
-                <Label htmlFor="resJobSpec" className="text-xs">Job Specification *</Label>
-                <Textarea id="resJobSpec" value={resJobSpec} onChange={(e) => setResJobSpec(e.target.value)} placeholder="Paste the full job spec here..." required className="bg-secondary border-border min-h-[120px] text-xs" />
+                <Label htmlFor="resJobSpec" className="text-xs">
+                  Job Specification *
+                </Label>
+                <Textarea
+                  id="resJobSpec"
+                  value={resJobSpec}
+                  onChange={(e) => setResJobSpec(e.target.value)}
+                  placeholder="Paste the full job spec here..."
+                  required
+                  className="bg-secondary border-border min-h-[120px] text-xs"
+                />
               </div>
             )}
             <Button type="submit" className="w-full glow-accent" size="lg" disabled={researching}>
               {researching ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {researchProgress || "Researching..."}</>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> {researchProgress || "Researching..."}
+                </>
               ) : (
-                <><FlaskConical className="h-4 w-4 mr-2" /> Research</>
+                <>
+                  <FlaskConical className="h-4 w-4 mr-2" /> Research
+                </>
               )}
             </Button>
           </form>
@@ -1059,7 +1211,9 @@ export default function SearchTab({
                         <div className="glass-card p-4 space-y-3">
                           <div className="flex items-center gap-2">
                             <Building2 className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-semibold text-foreground">Target Companies ({researchData.target_companies.length})</span>
+                            <span className="text-sm font-semibold text-foreground">
+                              Target Companies ({researchData.target_companies.length})
+                            </span>
                           </div>
                           <div className="space-y-2">
                             {researchData.target_companies.map((c, i) => (
@@ -1097,8 +1251,45 @@ export default function SearchTab({
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {researchData.search_criteria.keywords.map((kw, i) => (
-                              <span key={i} className="inline-block rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary">{kw}</span>
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-full bg-primary/20 text-primary px-3 py-1 text-xs font-medium"
+                              >
+                                {kw}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setResearchData((prev) => ({
+                                      ...prev,
+                                      search_criteria: {
+                                        ...prev.search_criteria,
+                                        keywords: prev.search_criteria.keywords.filter((_, idx) => idx !== i),
+                                      },
+                                    }))
+                                  }
+                                  className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400 transition-all cursor-pointer"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
                             ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = prompt("Add search criterion:");
+                                if (v && v.trim())
+                                  setResearchData((prev) => ({
+                                    ...prev,
+                                    search_criteria: {
+                                      ...prev.search_criteria,
+                                      keywords: [...prev.search_criteria.keywords, v.trim()],
+                                    },
+                                  }));
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 text-primary/60 hover:text-primary hover:border-primary px-3 py-1 text-xs transition-colors cursor-pointer"
+                            >
+                              <Plus className="h-3 w-3" /> Add
+                            </button>
                           </div>
                         </div>
                       )}
@@ -1113,22 +1304,47 @@ export default function SearchTab({
                       {researchData.raw?.split("\n").map((line, i) => {
                         const trimmed = line.trim();
                         if (!trimmed) return <br key={i} />;
-                        if (trimmed.startsWith("### ")) return <p key={i} className="font-semibold text-foreground mt-4 mb-1">{trimmed.replace(/^###\s+/, "")}</p>;
-                        if (trimmed.startsWith("## ")) return <p key={i} className="font-bold text-foreground text-base mt-5 mb-1">{trimmed.replace(/^##\s+/, "")}</p>;
-                        if (trimmed.startsWith("# ")) return <p key={i} className="font-bold text-foreground text-lg mt-5 mb-2">{trimmed.replace(/^#\s+/, "")}</p>;
-                        if (trimmed.match(/^[-•*]\s/)) return (
-                          <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
-                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                            <span>{trimmed.replace(/^[-•*]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
-                          </div>
+                        if (trimmed.startsWith("### "))
+                          return (
+                            <p key={i} className="font-semibold text-foreground mt-4 mb-1">
+                              {trimmed.replace(/^###\s+/, "")}
+                            </p>
+                          );
+                        if (trimmed.startsWith("## "))
+                          return (
+                            <p key={i} className="font-bold text-foreground text-base mt-5 mb-1">
+                              {trimmed.replace(/^##\s+/, "")}
+                            </p>
+                          );
+                        if (trimmed.startsWith("# "))
+                          return (
+                            <p key={i} className="font-bold text-foreground text-lg mt-5 mb-2">
+                              {trimmed.replace(/^#\s+/, "")}
+                            </p>
+                          );
+                        if (trimmed.match(/^[-•*]\s/))
+                          return (
+                            <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                              <span>{trimmed.replace(/^[-•*]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
+                            </div>
+                          );
+                        if (trimmed.match(/^\d+[.)]\s/))
+                          return (
+                            <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                              <span>{trimmed.replace(/^\d+[.)]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
+                            </div>
+                          );
+                        return (
+                          <p
+                            key={i}
+                            className="my-0.5"
+                            dangerouslySetInnerHTML={{
+                              __html: trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"),
+                            }}
+                          />
                         );
-                        if (trimmed.match(/^\d+[.)]\s/)) return (
-                          <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
-                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                            <span>{trimmed.replace(/^\d+[.)]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
-                          </div>
-                        );
-                        return <p key={i} className="my-0.5" dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") }} />;
                       })}
                     </div>
                   </div>
@@ -1192,13 +1408,24 @@ export default function SearchTab({
                 <Button className="flex-1 glow-accent" onClick={handleFindCandidates}>
                   <ArrowRight className="h-4 w-4 mr-2" /> Find Candidates
                 </Button>
-                <Button variant="secondary" className="flex-1" onClick={handleSaveResearch} disabled={savingResearch || researchSaved}>
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={handleSaveResearch}
+                  disabled={savingResearch || researchSaved}
+                >
                   {researchSaved ? (
-                    <><Check className="h-4 w-4 mr-2" /> Saved</>
+                    <>
+                      <Check className="h-4 w-4 mr-2" /> Saved
+                    </>
                   ) : savingResearch ? (
-                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</>
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
+                    </>
                   ) : (
-                    <><Bookmark className="h-4 w-4 mr-2" /> Save Research</>
+                    <>
+                      <Bookmark className="h-4 w-4 mr-2" /> Save Research
+                    </>
                   )}
                 </Button>
               </div>
@@ -1213,29 +1440,72 @@ export default function SearchTab({
           <form onSubmit={handleEnrich} className="glass-card p-5 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="name" className="text-xs">Name *</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" required className="bg-secondary border-border" />
+                <Label htmlFor="name" className="text-xs">
+                  Name *
+                </Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Jane Doe"
+                  required
+                  className="bg-secondary border-border"
+                />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="company" className="text-xs">Company *</Label>
-                <Input id="company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme Inc" required className="bg-secondary border-border" />
+                <Label htmlFor="company" className="text-xs">
+                  Company *
+                </Label>
+                <Input
+                  id="company"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Acme Inc"
+                  required
+                  className="bg-secondary border-border"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="role" className="text-xs">Role</Label>
-                <Input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Staff Engineer" className="bg-secondary border-border" />
+                <Label htmlFor="role" className="text-xs">
+                  Role
+                </Label>
+                <Input
+                  id="role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Staff Engineer"
+                  className="bg-secondary border-border"
+                />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="handle" className="text-xs">GitHub Handle</Label>
-                <Input id="handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="janedoe" className="bg-secondary border-border font-mono" />
+                <Label htmlFor="handle" className="text-xs">
+                  GitHub Handle
+                </Label>
+                <Input
+                  id="handle"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="janedoe"
+                  className="bg-secondary border-border font-mono"
+                />
               </div>
             </div>
-            <Button type="submit" className="w-full glow-accent" size="lg" disabled={loading || !name.trim() || !company.trim()}>
+            <Button
+              type="submit"
+              className="w-full glow-accent"
+              size="lg"
+              disabled={loading || !name.trim() || !company.trim()}
+            >
               {loading ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Enriching...</>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Enriching...
+                </>
               ) : (
-                <><Sparkles className="h-4 w-4 mr-2" /> Enrich</>
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" /> Enrich
+                </>
               )}
             </Button>
           </form>
@@ -1279,27 +1549,62 @@ export default function SearchTab({
                 Role / Title *
                 {!searchRole && settingsRole && <span className="text-primary/60 ml-1">(from Settings)</span>}
               </Label>
-              <Input id="searchRole" value={searchRole} onChange={(e) => setSearchRole(e.target.value)} placeholder={settingsRole || "Staff Engineer, Product Manager..."} required className="bg-secondary border-border" />
+              <Input
+                id="searchRole"
+                value={searchRole}
+                onChange={(e) => setSearchRole(e.target.value)}
+                placeholder={settingsRole || "Staff Engineer, Product Manager..."}
+                required
+                className="bg-secondary border-border"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="searchCompany" className="text-xs">Company / Industry</Label>
-                <Input id="searchCompany" value={searchCompany} onChange={(e) => setSearchCompany(e.target.value)} placeholder="Fintech, Acme Inc..." className="bg-secondary border-border" />
+                <Label htmlFor="searchCompany" className="text-xs">
+                  Company / Industry
+                </Label>
+                <Input
+                  id="searchCompany"
+                  value={searchCompany}
+                  onChange={(e) => setSearchCompany(e.target.value)}
+                  placeholder="Fintech, Acme Inc..."
+                  className="bg-secondary border-border"
+                />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="searchLocation" className="text-xs">Location</Label>
-                <Input id="searchLocation" value={searchLocation} onChange={(e) => setSearchLocation(e.target.value)} placeholder="San Francisco, Remote..." className="bg-secondary border-border" />
+                <Label htmlFor="searchLocation" className="text-xs">
+                  Location
+                </Label>
+                <Input
+                  id="searchLocation"
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                  placeholder="San Francisco, Remote..."
+                  className="bg-secondary border-border"
+                />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="searchSkills" className="text-xs">Skills / Keywords</Label>
-              <Input id="searchSkills" value={searchSkills} onChange={(e) => setSearchSkills(e.target.value)} placeholder="React, Python, ML..." className="bg-secondary border-border" />
+              <Label htmlFor="searchSkills" className="text-xs">
+                Skills / Keywords
+              </Label>
+              <Input
+                id="searchSkills"
+                value={searchSkills}
+                onChange={(e) => setSearchSkills(e.target.value)}
+                placeholder="React, Python, ML..."
+                className="bg-secondary border-border"
+              />
             </div>
             <Button type="submit" className="w-full glow-accent" size="lg" disabled={isSearching || !searchRole.trim()}>
               {isSearching ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Searching...</>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Searching...
+                </>
               ) : (
-                <><Search className="h-4 w-4 mr-2" /> Search Candidates</>
+                <>
+                  <Search className="h-4 w-4 mr-2" /> Search Candidates
+                </>
               )}
             </Button>
           </form>
@@ -1330,7 +1635,12 @@ export default function SearchTab({
           {searchStatus === "error" && searchResults.length === 0 && (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
               <p className="text-sm text-destructive">Search failed. Try again with different criteria.</p>
-              <Button size="sm" variant="outline" className="border-destructive/30 text-destructive" onClick={() => setSearchStatus("idle")}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/30 text-destructive"
+                onClick={() => setSearchStatus("idle")}
+              >
                 <RefreshCw className="h-3 w-3 mr-1" /> Retry
               </Button>
             </div>
@@ -1355,7 +1665,12 @@ export default function SearchTab({
                         Enriching {batchProgress} of {batchTotal}...
                         {batchSkipped > 0 && ` (skipped ${batchSkipped} already enriched)`}
                       </span>
-                      <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={handleStopBatchEnrich}>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="text-xs h-7 px-2"
+                        onClick={handleStopBatchEnrich}
+                      >
                         Stop
                       </Button>
                     </div>
@@ -1368,7 +1683,11 @@ export default function SearchTab({
                     onClick={() => setViewMode(viewMode === "expanded" ? "compact" : "expanded")}
                     className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    {viewMode === "expanded" ? <LayoutList className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+                    {viewMode === "expanded" ? (
+                      <LayoutList className="h-3.5 w-3.5" />
+                    ) : (
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                    )}
                     {viewMode === "expanded" ? "Compact" : "Expanded"}
                   </button>
                 </div>
@@ -1376,24 +1695,26 @@ export default function SearchTab({
 
               {/* Filter chips */}
               <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {([
+                {[
                   { key: "all", label: "All", count: searchResults.length },
                   { key: "linkedin", label: "LinkedIn", count: linkedInCount },
                   { key: "github", label: "GitHub", count: githubCount },
                   { key: "web", label: "Other", count: webCount },
-                ]).filter((f) => f.count > 0 || f.key === "all").map(({ key, label, count }) => (
-                  <button
-                    key={key}
-                    onClick={() => setSourceFilter(key)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                      sourceFilter === key
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-muted-foreground hover:text-foreground border border-border"
-                    }`}
-                  >
-                    {label} ({count})
-                  </button>
-                ))}
+                ]
+                  .filter((f) => f.count > 0 || f.key === "all")
+                  .map(({ key, label, count }) => (
+                    <button
+                      key={key}
+                      onClick={() => setSourceFilter(key)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                        sourceFilter === key
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:text-foreground border border-border"
+                      }`}
+                    >
+                      {label} ({count})
+                    </button>
+                  ))}
               </div>
 
               {/* Batch enrich progress bar */}
@@ -1464,18 +1785,20 @@ export default function SearchTab({
                             <h3 className="text-base font-medium text-muted-foreground truncate">Unknown Candidate</h3>
                           )}
                           {!candidate.name && candidate.description && (
-                            <p className="text-xs text-muted-foreground/70 truncate">{candidate.description.substring(0, 50)}...</p>
+                            <p className="text-xs text-muted-foreground/70 truncate">
+                              {candidate.description.substring(0, 50)}...
+                            </p>
                           )}
-                          {titleLine && (
-                            <p className="text-xs text-muted-foreground truncate">{titleLine}</p>
-                          )}
+                          {titleLine && <p className="text-xs text-muted-foreground truncate">{titleLine}</p>}
                           {candidate.location && (
                             <p className="text-xs text-muted-foreground/70 truncate">{candidate.location}</p>
                           )}
                         </div>
 
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${getSourceBadgeStyle(candidate.source)}`}>
+                          <span
+                            className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${getSourceBadgeStyle(candidate.source)}`}
+                          >
                             {getSourceLabel(candidate.source)}
                           </span>
                           {candidate.duplicate && (
@@ -1517,8 +1840,21 @@ export default function SearchTab({
                         <div className="rounded-lg bg-secondary/80 border border-border p-3 space-y-2">
                           <p className="text-xs text-foreground">This candidate was already enriched. Re-enrich?</p>
                           <div className="flex gap-2">
-                            <Button size="sm" className="text-xs flex-1" onClick={() => handleEnrichFromSearch(candidate, idx)}>Yes</Button>
-                            <Button size="sm" variant="secondary" className="text-xs flex-1" onClick={() => setReEnrichConfirm(null)}>No</Button>
+                            <Button
+                              size="sm"
+                              className="text-xs flex-1"
+                              onClick={() => handleEnrichFromSearch(candidate, idx)}
+                            >
+                              Yes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="text-xs flex-1"
+                              onClick={() => setReEnrichConfirm(null)}
+                            >
+                              No
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1533,11 +1869,17 @@ export default function SearchTab({
                           onClick={() => handleEnrichFromSearch(candidate, idx)}
                         >
                           {enrichingIdx === idx ? (
-                            <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Enriching...</>
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" /> Enriching...
+                            </>
                           ) : candidate.enrichmentData ? (
-                            <><Check className="h-3 w-3 mr-1" /> Enriched</>
+                            <>
+                              <Check className="h-3 w-3 mr-1" /> Enriched
+                            </>
                           ) : (
-                            <><Sparkles className="h-3 w-3 mr-1" /> Enrich</>
+                            <>
+                              <Sparkles className="h-3 w-3 mr-1" /> Enrich
+                            </>
                           )}
                         </Button>
                         <Button
@@ -1547,11 +1889,15 @@ export default function SearchTab({
                           onClick={() => handleSaveFromSearch(candidate, idx)}
                         >
                           {savedIdxs.has(idx) ? (
-                            <><Check className="h-3 w-3 mr-1" /> Saved</>
+                            <>
+                              <Check className="h-3 w-3 mr-1" /> Saved
+                            </>
                           ) : savingIdx === idx ? (
                             <span className="animate-pulse">Saving...</span>
                           ) : (
-                            <><Save className="h-3 w-3 mr-1" /> Save</>
+                            <>
+                              <Save className="h-3 w-3 mr-1" /> Save
+                            </>
                           )}
                         </Button>
                         {candidate.url && (
@@ -1561,7 +1907,11 @@ export default function SearchTab({
                               className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
                               title="Copy URL"
                             >
-                              {copiedUrl === candidate.url ? <Check className="h-3 w-3 text-primary" /> : <Clipboard className="h-3 w-3" />}
+                              {copiedUrl === candidate.url ? (
+                                <Check className="h-3 w-3 text-primary" />
+                              ) : (
+                                <Clipboard className="h-3 w-3" />
+                              )}
                             </button>
                             <a
                               href={candidate.url}
@@ -1579,7 +1929,14 @@ export default function SearchTab({
                     {/* Manual enrichment result */}
                     {enrichedIdx === idx && enrichedResult && (
                       <div className="mt-2">
-                        <CandidateCard data={{ name: candidate.name, company: candidate.company, role: candidate.role, enrichment_data: enrichedResult }} />
+                        <CandidateCard
+                          data={{
+                            name: candidate.name,
+                            company: candidate.company,
+                            role: candidate.role,
+                            enrichment_data: enrichedResult,
+                          }}
+                        />
                       </div>
                     )}
                   </div>
@@ -1590,79 +1947,90 @@ export default function SearchTab({
         </>
       )}
 
-          {/* Search History - collapsible */}
-          {searchHistory.length > 0 && (
-            <div className="glass-card overflow-hidden">
-              <button
-                onClick={() => setHistoryExpanded(!historyExpanded)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold text-foreground">History ({searchHistory.length})</span>
-                </div>
-                {historyExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-              </button>
-              {historyExpanded && (
-                <div className="px-4 pb-4 space-y-2">
-                  {searchHistory.map((h) => {
-                    const params = h.query_params || {};
-                    const meta = h.metadata || params;
-                    const isResearch = h.action_type === "research";
-                    const queryText = isResearch
-                      ? `${meta.role || ""}${meta.company ? ` at ${meta.company}` : ""}`
-                      : [params.role, params.company, params.skills].filter(Boolean).join(", ");
-                    const truncated = queryText.length > 80 ? queryText.substring(0, 80) + "..." : queryText;
-                    const timeAgo = getRelativeTime(h.created_at);
+      {/* Search History - collapsible */}
+      {searchHistory.length > 0 && (
+        <div className="glass-card overflow-hidden">
+          <button
+            onClick={() => setHistoryExpanded(!historyExpanded)}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold text-foreground">History ({searchHistory.length})</span>
+            </div>
+            {historyExpanded ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+          {historyExpanded && (
+            <div className="px-4 pb-4 space-y-2">
+              {searchHistory.map((h) => {
+                const params = h.query_params || {};
+                const meta = h.metadata || params;
+                const isResearch = h.action_type === "research";
+                const queryText = isResearch
+                  ? `${meta.role || ""}${meta.company ? ` at ${meta.company}` : ""}`
+                  : [params.role, params.company, params.skills].filter(Boolean).join(", ");
+                const truncated = queryText.length > 80 ? queryText.substring(0, 80) + "..." : queryText;
+                const timeAgo = getRelativeTime(h.created_at);
 
-                    return (
-                      <button
-                        key={h.id}
-                        onClick={() => {
-                          if (isResearch) {
-                            setResJobTitle(meta.role || "");
-                            setResCompanyName(meta.company || "");
-                            setMode("research");
-                          } else {
-                            setSearchRole(params.role || "");
-                            setSearchCompany(params.company || "");
-                            setSearchLocation(params.location || "");
-                            setSearchSkills(params.skills || "");
-                            setMode("search");
-                            setTimeout(() => {
-                              const form = document.getElementById("search-form") as HTMLFormElement;
-                              if (form) form.requestSubmit();
-                            }, 100);
-                          }
-                        }}
-                        className="w-full flex items-center gap-3 rounded-lg bg-secondary/60 border border-border p-3 text-left hover:border-primary/30 transition-colors"
-                      >
-                        {isResearch ? <FileText className="h-4 w-4 text-primary shrink-0" /> : <Search className="h-4 w-4 text-muted-foreground shrink-0" />}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-foreground truncate">{truncated || "Search"}</p>
-                          <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
-                        </div>
-                        {!isResearch && h.result_count > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0">
-                            {h.result_count}
-                          </span>
-                        )}
-                        {isResearch && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border shrink-0">
-                            Research
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => {
+                      if (isResearch) {
+                        setResJobTitle(meta.role || "");
+                        setResCompanyName(meta.company || "");
+                        setMode("research");
+                      } else {
+                        setSearchRole(params.role || "");
+                        setSearchCompany(params.company || "");
+                        setSearchLocation(params.location || "");
+                        setSearchSkills(params.skills || "");
+                        setMode("search");
+                        setTimeout(() => {
+                          const form = document.getElementById("search-form") as HTMLFormElement;
+                          if (form) form.requestSubmit();
+                        }, 100);
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 rounded-lg bg-secondary/60 border border-border p-3 text-left hover:border-primary/30 transition-colors"
+                  >
+                    {isResearch ? (
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{truncated || "Search"}</p>
+                      <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
+                    </div>
+                    {!isResearch && h.result_count > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0">
+                        {h.result_count}
+                      </span>
+                    )}
+                    {isResearch && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border shrink-0">
+                        Research
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
 
       {/* Duplicate Detection Modal */}
       {duplicateModal && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDuplicateModal(null)}>
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setDuplicateModal(null)}
+        >
           <div className="glass-card p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-[hsl(48,100%,45%)]" />
