@@ -429,7 +429,7 @@ export default function SearchTab({
   const batchCancelRef = useRef(false);
 
   // Research state - restore from persisted props
-  const [researchInput, setResearchInput] = useState<ResearchInput>("quick");
+  const [researchInput, setResearchInput] = useState<ResearchInput>("full");
   const [resJobTitle, setResJobTitle] = useState("");
   const [resCompanyName, setResCompanyName] = useState("");
   const [resJobSpec, setResJobSpec] = useState("");
@@ -1087,36 +1087,6 @@ export default function SearchTab({
         <p className="text-sm text-muted-foreground">{modeDescriptions[mode]}</p>
       </div>
 
-      {/* Onboarding banner — shown once for new users */}
-      {!onboardingDismissed && searchResults.length === 0 && !researching && !isSearching && (
-        <div className="glass-card p-5 space-y-4 border border-primary/20">
-          <div className="flex items-start justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Welcome to SourceKit</h2>
-            <button onClick={dismissOnboarding} className="text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground">Source exceptional candidates in three steps:</p>
-          <div className="grid grid-cols-3 gap-3">
-            <button onClick={() => setMode("research")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">1</div>
-              <span className="text-xs font-medium text-foreground">Research</span>
-              <span className="text-[10px] text-muted-foreground leading-tight">Describe a role to get target companies &amp; search criteria</span>
-            </button>
-            <button onClick={() => setMode("search")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">2</div>
-              <span className="text-xs font-medium text-foreground">Search</span>
-              <span className="text-[10px] text-muted-foreground leading-tight">Find matching candidates with AI-powered web search</span>
-            </button>
-            <button onClick={() => setMode("enrich")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">3</div>
-              <span className="text-xs font-medium text-foreground">Enrich &amp; Pipeline</span>
-              <span className="text-[10px] text-muted-foreground leading-tight">Score candidates on EEA signals, then track in your pipeline</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Mode Toggle */}
       <div className="flex rounded-lg border border-border bg-secondary p-1 gap-1">
         {[
@@ -1207,7 +1177,7 @@ export default function SearchTab({
                   id="resJobSpec"
                   value={resJobSpec}
                   onChange={(e) => setResJobSpec(e.target.value)}
-                  placeholder="Paste the full job spec here..."
+                  placeholder="Paste a job description or URL here — or just type a role like 'Staff ML Engineer at Anthropic'"
                   required
                   className="bg-secondary border-border min-h-[120px] text-xs"
                 />
