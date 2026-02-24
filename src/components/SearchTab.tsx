@@ -1072,12 +1072,50 @@ export default function SearchTab({
     enrich: "Enrich candidate profiles from external data",
   };
 
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() =>
+    localStorage.getItem("sourcekit-onboarding-dismissed") === "1"
+  );
+  const dismissOnboarding = () => {
+    localStorage.setItem("sourcekit-onboarding-dismissed", "1");
+    setOnboardingDismissed(true);
+  };
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-foreground">Candidate Search</h1>
         <p className="text-sm text-muted-foreground">{modeDescriptions[mode]}</p>
       </div>
+
+      {/* Onboarding banner — shown once for new users */}
+      {!onboardingDismissed && searchResults.length === 0 && !researching && !isSearching && (
+        <div className="glass-card p-5 space-y-4 border border-primary/20">
+          <div className="flex items-start justify-between">
+            <h2 className="text-sm font-semibold text-foreground">Welcome to SourceKit</h2>
+            <button onClick={dismissOnboarding} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">Source exceptional candidates in three steps:</p>
+          <div className="grid grid-cols-3 gap-3">
+            <button onClick={() => setMode("research")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">1</div>
+              <span className="text-xs font-medium text-foreground">Research</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Describe a role to get target companies &amp; search criteria</span>
+            </button>
+            <button onClick={() => setMode("search")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">2</div>
+              <span className="text-xs font-medium text-foreground">Search</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Find matching candidates with AI-powered web search</span>
+            </button>
+            <button onClick={() => setMode("enrich")} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-center">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">3</div>
+              <span className="text-xs font-medium text-foreground">Enrich &amp; Pipeline</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Score candidates on EEA signals, then track in your pipeline</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mode Toggle */}
       <div className="flex rounded-lg border border-border bg-secondary p-1 gap-1">
@@ -1187,6 +1225,29 @@ export default function SearchTab({
               )}
             </Button>
           </form>
+
+          {/* Research examples */}
+          {!researching && !researchData && researchInput === "quick" && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Try an example</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { title: "Staff ML Engineer", company: "Anthropic" },
+                  { title: "Founding Engineer", company: "Series A AI startup" },
+                  { title: "Staff Backend Engineer", company: "Stripe" },
+                  { title: "Senior iOS Engineer", company: "Apple, Airbnb" },
+                ].map(({ title, company }) => (
+                  <button
+                    key={title + company}
+                    onClick={() => { setResJobTitle(title); setResCompanyName(company); }}
+                    className="px-2.5 py-1 rounded-full text-[11px] bg-secondary border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                  >
+                    {title} @ {company}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Research loading */}
           {researching && (
@@ -1558,6 +1619,34 @@ export default function SearchTab({
                 className="bg-secondary border-border"
               />
             </div>
+            {/* Search examples — visible when form is empty */}
+            {!searchRole && !isSearching && searchResults.length === 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Example searches — click to fill</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { role: "Senior ML Engineer", company: "Anthropic, OpenAI, DeepMind", skills: "PyTorch, transformers" },
+                    { role: "Staff Frontend Engineer", company: "Stripe, Vercel, Figma", skills: "React, TypeScript" },
+                    { role: "Security Engineer", location: "Remote", skills: "cloud security, SOC 2" },
+                    { role: "Founding Engineer", company: "Series A AI startup", skills: "full-stack, Python" },
+                  ].map((ex) => (
+                    <button
+                      key={ex.role}
+                      onClick={() => {
+                        setSearchRole(ex.role);
+                        if (ex.company) setSearchCompany(ex.company);
+                        if ((ex as any).location) setSearchLocation((ex as any).location);
+                        if (ex.skills) setSearchSkills(ex.skills);
+                      }}
+                      className="px-2.5 py-1 rounded-full text-[11px] bg-secondary border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                    >
+                      {ex.role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="searchCompany" className="text-xs">
@@ -1634,21 +1723,44 @@ export default function SearchTab({
 
           {searchStatus === "error" && searchResults.length === 0 && (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center space-y-3">
-              <p className="text-sm text-destructive">Search failed. Try again with different criteria.</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-destructive/30 text-destructive"
-                onClick={() => setSearchStatus("idle")}
-              >
-                <RefreshCw className="h-3 w-3 mr-1" /> Retry
-              </Button>
+              <p className="text-sm text-destructive">Search failed. This can happen if the search API is temporarily busy.</p>
+              <p className="text-xs text-muted-foreground">Try a simpler query, reduce the result count, or wait a moment and retry.</p>
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-destructive/30 text-destructive"
+                  onClick={() => setSearchStatus("idle")}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" /> Edit &amp; retry
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setMode("research")}>
+                  <FlaskConical className="h-3 w-3 mr-1" /> Try Research mode
+                </Button>
+              </div>
             </div>
           )}
 
           {searchStatus === "done" && searchResults.length === 0 && (
-            <div className="glass-card p-6 text-center">
-              <p className="text-sm text-muted-foreground">No candidates found. Try broadening your search criteria.</p>
+            <div className="glass-card p-6 text-center space-y-4">
+              <p className="text-sm font-medium text-foreground">No candidates found</p>
+              <div className="text-xs text-muted-foreground space-y-1 text-left max-w-sm mx-auto">
+                <p className="font-medium text-foreground/80">Tips to improve results:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Broaden the role title (e.g. "Engineer" instead of "Staff ML Engineer")</li>
+                  <li>Remove the location filter to search globally</li>
+                  <li>Add fewer, more general skills</li>
+                  <li>Try Research mode first — it generates optimized search criteria</li>
+                </ul>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setSearchStatus("idle")}>
+                  <RefreshCw className="h-3 w-3 mr-1" /> Edit search
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setMode("research")}>
+                  <FlaskConical className="h-3 w-3 mr-1" /> Try Research mode
+                </Button>
+              </div>
             </div>
           )}
 

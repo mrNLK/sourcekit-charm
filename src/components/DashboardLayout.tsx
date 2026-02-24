@@ -15,11 +15,11 @@ interface DashboardLayoutProps {
 }
 
 const navItems = [
-  { id: "search" as const, label: "New Search", icon: Search },
-  { id: "history" as const, label: "History", icon: Clock },
-  { id: "pipeline" as const, label: "Pipeline", icon: Kanban },
-  { id: "watchlist" as const, label: "Watchlist", icon: Bookmark },
-  { id: "settings" as const, label: "Settings", icon: Settings },
+  { id: "search" as const, label: "New Search", icon: Search, tip: "Research roles, search candidates, and enrich profiles" },
+  { id: "history" as const, label: "History", icon: Clock, tip: "Your past searches and research sessions" },
+  { id: "pipeline" as const, label: "Pipeline", icon: Kanban, tip: "Active recruiting funnel — candidates you're pursuing now" },
+  { id: "watchlist" as const, label: "Watchlist", icon: Bookmark, tip: "Tracking list for candidates to revisit later" },
+  { id: "settings" as const, label: "Settings", icon: Settings, tip: "Configure role context, webhooks, and integrations" },
 ];
 
 export default function DashboardLayout({ activeTab, onTabChange, children }: DashboardLayoutProps) {
@@ -61,6 +61,7 @@ export default function DashboardLayout({ activeTab, onTabChange, children }: Da
           <button
             key={item.id}
             onClick={() => onTabChange(item.id)}
+            title={item.tip}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               activeTab === item.id

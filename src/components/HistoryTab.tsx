@@ -55,10 +55,12 @@ export default function HistoryTab() {
 
   if (history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Clock className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold text-foreground mb-2">No Search History</h2>
-        <p className="text-sm text-muted-foreground">Your past searches will appear here after you run a search.</p>
+      <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+        <Clock className="h-12 w-12 text-muted-foreground mb-2" />
+        <h2 className="text-lg font-semibold text-foreground">No Search History</h2>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          Your past searches and research sessions will appear here. Click any entry to see its results again.
+        </p>
       </div>
     );
   }

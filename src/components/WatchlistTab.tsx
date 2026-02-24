@@ -122,10 +122,16 @@ export default function WatchlistTab() {
       )}
 
       {items.length === 0 && !showAdd ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Bookmark className="h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">No Watchlist Items</h2>
-          <p className="text-sm text-muted-foreground">Save candidates from search results to track them here.</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+          <Bookmark className="h-12 w-12 text-muted-foreground mb-2" />
+          <h2 className="text-lg font-semibold text-foreground">No Watchlist Items</h2>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Track candidates you're interested in but not actively recruiting yet. Save them from search results, or add manually above.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">Watchlist</span> = tracking for later.{" "}
+            <span className="font-medium text-foreground/80">Pipeline</span> = active recruiting.
+          </p>
         </div>
       ) : (
         items.map((item) => (

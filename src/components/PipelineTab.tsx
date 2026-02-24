@@ -52,6 +52,14 @@ const STAGE_LABELS: Record<Stage, string> = {
   offer: "Offer",
 };
 
+const STAGE_DESCRIPTIONS: Record<Stage, string> = {
+  sourced: "Identified and saved. Ready for outreach.",
+  contacted: "Message sent. Waiting for response.",
+  responded: "Candidate replied. Active conversation.",
+  screen: "Phone/video screen scheduled or completed.",
+  offer: "Offer extended or in negotiation.",
+};
+
 interface Candidate {
   id: string;
   name: string;
@@ -462,6 +470,7 @@ export default function PipelineTab() {
     } else {
       setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, stage: newStage } : c)));
       recordStageChange(id, oldStage, newStage);
+      toast({ title: `Moved ${candidate?.name || "candidate"} to ${STAGE_LABELS[newStage as Stage] || newStage}` });
       if (newStage === "contacted" && user && candidate) {
         const result = await fireWebhookIfContacted({ ...candidate, stage: newStage }, user.id);
         if (result.success) {
@@ -966,6 +975,7 @@ export default function PipelineTab() {
           <button
             key={s}
             onClick={() => setActiveStage(activeStage === s ? null : s)}
+            title={STAGE_DESCRIPTIONS[s]}
             className={cn(
               "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors",
               activeStage === s
@@ -1031,10 +1041,28 @@ export default function PipelineTab() {
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : sorted.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted-foreground text-sm">
-          {candidates.length === 0
-            ? "No candidates saved yet. Search and enrich to get started."
-            : "No candidates match your filter."}
+        <div className="glass-card p-8 text-center space-y-4">
+          {candidates.length === 0 ? (
+            <>
+              <p className="text-sm font-medium text-foreground">Your pipeline is empty</p>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <span className="px-2 py-1 rounded bg-secondary">Sourced</span>
+                <ArrowRight className="h-3 w-3" />
+                <span className="px-2 py-1 rounded bg-secondary">Contacted</span>
+                <ArrowRight className="h-3 w-3" />
+                <span className="px-2 py-1 rounded bg-secondary">Responded</span>
+                <ArrowRight className="h-3 w-3" />
+                <span className="px-2 py-1 rounded bg-secondary">Screen</span>
+                <ArrowRight className="h-3 w-3" />
+                <span className="px-2 py-1 rounded bg-secondary">Offer</span>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                Search for candidates, enrich their profiles, and save them here. Move candidates through stages as your recruiting process advances.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No candidates match your current filter. Try a different stage or clear the search.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
@@ -1087,7 +1115,7 @@ export default function PipelineTab() {
                         >
                           {c.score}
                         </div>
-                        <span className="text-xs text-muted-foreground">EEA Score</span>
+                        <span className="text-xs text-muted-foreground" title="Evidence of Exceptional Ability score (0-100). Measures publications, patents, open-source impact, and top-company experience.">EEA Score</span>
                       </div>
                     )}
                     <div className="flex gap-1.5 px-1 py-1 overflow-x-auto">
@@ -1095,6 +1123,7 @@ export default function PipelineTab() {
                         <button
                           key={s}
                           onClick={() => handleStageChange(c.id, s)}
+                          title={STAGE_DESCRIPTIONS[s]}
                           className={cn(
                             "px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors",
                             c.stage === s
@@ -1109,7 +1138,7 @@ export default function PipelineTab() {
                     <CandidateCard data={c} />
                     {c.enrichment_data?.score_signals && (
                       <div className="glass-card p-4 space-y-3">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground" title="Evidence of Exceptional Ability — signals like publications, patents, open-source impact, top-company experience. 70+ Strong, 40-69 Moderate, &lt;40 Limited.">
                           <Shield className="h-3.5 w-3.5 text-primary" /> EEA Signals
                         </div>
                         <div className="flex flex-wrap gap-1.5">
