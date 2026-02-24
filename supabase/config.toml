@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.pipeline-chat]
 verify_jwt = false
+
+[functions.enrich-candidate]
+verify_jwt = false

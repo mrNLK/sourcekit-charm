@@ -63,3 +63,14 @@ USING (auth.uid() = created_by);
 
 CREATE INDEX idx_watchlist_created_by ON public.watchlist(created_by);
 CREATE INDEX idx_watchlist_created_at ON public.watchlist(created_at DESC);
+
+-- Fix search_history RLS: scope SELECT and DELETE to owner
+DROP POLICY IF EXISTS "Authenticated users can view search history" ON public.search_history;
+CREATE POLICY "Users can view own search history"
+ON public.search_history FOR SELECT
+USING (auth.uid() = created_by);
+
+DROP POLICY IF EXISTS "Authenticated users can delete search history" ON public.search_history;
+CREATE POLICY "Users can delete own search history"
+ON public.search_history FOR DELETE
+USING (auth.uid() = created_by);
