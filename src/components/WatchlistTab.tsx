@@ -1,22 +1,24 @@
 import { useState, useEffect } from "react";
-import { Bookmark, Search, RotateCcw, Trash2, ExternalLink } from "lucide-react";
+import { Bookmark, RotateCcw, Trash2, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface WatchlistEntry {
   id: string;
   name: string;
   company: string;
-  stage: string;
-  score: number;
-  notes: string;
+  role: string;
+  url: string;
+  enrichment_data: any;
   created_at: string;
 }
 
 export default function WatchlistTab() {
+  const { user } = useAuth();
   const [items, setItems] = useState<WatchlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", company: "", stage: "", notes: "" });
+  const [form, setForm] = useState({ name: "", company: "", role: "" });
 
   useEffect(() => {
     loadWatchlist();
@@ -24,21 +26,29 @@ export default function WatchlistTab() {
 
   const loadWatchlist = async () => {
     setLoading(true);
-    const { data } = await (supabase as any).from("candidates").select("*").order("created_at", { ascending: false });
+    const { data } = await (supabase as any)
+      .from("watchlist")
+      .select("*")
+      .order("created_at", { ascending: false });
     if (data) setItems(data);
     setLoading(false);
   };
 
   const addItem = async () => {
-    if (!form.name.trim()) return;
-    await (supabase as any).from("candidates").insert([form]);
-    setForm({ name: "", company: "", stage: "", notes: "" });
+    if (!form.name.trim() || !user) return;
+    await (supabase as any).from("watchlist").insert([{
+      name: form.name.trim(),
+      company: form.company.trim() || null,
+      role: form.role.trim() || null,
+      created_by: user.id,
+    }]);
+    setForm({ name: "", company: "", role: "" });
     setShowAdd(false);
     loadWatchlist();
   };
 
   const removeItem = async (id: string) => {
-    await (supabase as any).from("candidates").delete().eq("id", id);
+    await (supabase as any).from("watchlist").delete().eq("id", id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
@@ -88,18 +98,12 @@ export default function WatchlistTab() {
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
             <input
-              placeholder="Stage"
-              value={form.stage}
-              onChange={(e) => setForm({ ...form, stage: e.target.value })}
+              placeholder="Role"
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
               className="px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
             />
           </div>
-          <input
-            placeholder="Notes"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground"
-          />
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => setShowAdd(false)}
@@ -121,7 +125,7 @@ export default function WatchlistTab() {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Bookmark className="h-12 w-12 text-muted-foreground mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">No Watchlist Items</h2>
-          <p className="text-sm text-muted-foreground">Add candidates you want to track over time.</p>
+          <p className="text-sm text-muted-foreground">Save candidates from search results to track them here.</p>
         </div>
       ) : (
         items.map((item) => (
@@ -137,12 +141,21 @@ export default function WatchlistTab() {
                   {item.company ? ` at ${item.company}` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {item.stage || "Sourced"}
-                  {item.notes ? ` \u2022 ${item.notes}` : ""}
+                  {item.role || "Unknown role"}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+              {item.url && (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 text-muted-foreground hover:text-primary"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
               <button
                 onClick={() => removeItem(item.id)}
                 className="p-1.5 text-muted-foreground hover:text-destructive"
