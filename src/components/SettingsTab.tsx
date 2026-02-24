@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2, Globe, Key } from "lucide-react";
+import { LogOut, Users, Server, Target, MessageSquare, Save, Check, Loader2, Globe } from "lucide-react";
 
 const SETTING_KEYS = [
   "target_role",
@@ -14,8 +14,6 @@ const SETTING_KEYS = [
   "pitch",
   "slack_webhook_url",
   "webhook_url",
-  "exa_api_key",
-  "parallel_api_key",
 ] as const;
 
 export default function SettingsTab() {
@@ -26,8 +24,6 @@ export default function SettingsTab() {
     target_company: "",
     pitch: "",
     slack_webhook_url: "",
-    exa_api_key: "",
-    parallel_api_key: "",
     webhook_url: "",
   });
   const [loading, setLoading] = useState(true);
@@ -192,46 +188,6 @@ export default function SettingsTab() {
       </div>
 
       {/* Save button */}
-
-      {/* API Keys */}
-      <div className="glass-card p-5 space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <Key className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold text-foreground">API Keys</p>
-        </div>
-        <p className="text-xs text-muted-foreground">Required for candidate search and enrichment.</p>
-        {!loading && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="exaApiKey" className="text-xs">
-                Exa API Key
-              </Label>
-              <Input
-                id="exaApiKey"
-                type="password"
-                value={settings.exa_api_key}
-                onChange={(e) => setSettings((st) => ({ ...st, exa_api_key: e.target.value }))}
-                placeholder="exa-xxxxxxxxxxxxxxxx"
-                className="bg-secondary border-border font-mono text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="parallelApiKey" className="text-xs">
-                Parallel API Key
-              </Label>
-              <Input
-                id="parallelApiKey"
-                type="password"
-                value={settings.parallel_api_key}
-                onChange={(e) => setSettings((st) => ({ ...st, parallel_api_key: e.target.value }))}
-                placeholder="par-xxxxxxxxxxxxxxxx"
-                className="bg-secondary border-border font-mono text-xs"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
       {!loading && (
         <Button className="w-full glow-accent" onClick={handleSave} disabled={saving}>
           {saving ? (

@@ -452,8 +452,6 @@ export default function SearchTab({
   // Settings defaults
   const [settingsRole, setSettingsRole] = useState("");
   const [settingsCompany, setSettingsCompany] = useState("");
-  const [exaApiKey, setExaApiKey] = useState("");
-  const [parallelApiKey, setParallelApiKey] = useState("");
 
   // Duplicate detection state
   const [duplicateModal, setDuplicateModal] = useState<{
@@ -518,13 +516,11 @@ export default function SearchTab({
       .from("settings")
       .select("key, value")
       .eq("user_id", user.id)
-      .in("key", ["target_role", "target_company", "exa_api_key", "parallel_api_key"]);
+      .in("key", ["target_role", "target_company"]);
     if (data) {
       for (const s of data as any[]) {
         if (s.key === "target_role" && s.value) setSettingsRole(s.value);
         if (s.key === "target_company" && s.value) setSettingsCompany(s.value);
-        if (s.key === "exa_api_key" && s.value) setExaApiKey(s.value);
-        if (s.key === "parallel_api_key" && s.value) setParallelApiKey(s.value);
       }
     }
   };
@@ -602,9 +598,6 @@ export default function SearchTab({
           company: company.trim(),
           linkedin_url: handle.trim(),
           description: "",
-
-          exa_api_key: exaApiKey,
-          parallel_api_key: parallelApiKey,
         },
       });
       if (error) throw error;
@@ -741,9 +734,6 @@ export default function SearchTab({
           location: searchLocation.trim(),
           skills: searchSkills.trim(),
           count: searchCount,
-
-          exa_api_key: exaApiKey,
-          parallel_api_key: parallelApiKey,
         },
       });
 
@@ -786,9 +776,6 @@ export default function SearchTab({
           company: candidate.company,
           linkedin_url: candidate.url?.includes("linkedin.com") ? candidate.url : "",
           description: candidate.description || "",
-
-          exa_api_key: exaApiKey,
-          parallel_api_key: parallelApiKey,
         },
       });
       if (error) throw error;
@@ -837,9 +824,6 @@ export default function SearchTab({
             company: candidate.company,
             linkedin_url: candidate.url?.includes("linkedin.com") ? candidate.url : "",
             description: candidate.description || "",
-
-            exa_api_key: exaApiKey,
-            parallel_api_key: parallelApiKey,
           },
         });
         if (!error && data) {
@@ -1013,9 +997,6 @@ export default function SearchTab({
           job_title: title || "Role from job spec",
           company_name: companyVal || "Company from job spec",
           job_spec: specVal,
-
-          exa_api_key: exaApiKey,
-          parallel_api_key: parallelApiKey,
         },
       });
       if (error) throw error;
