@@ -15,7 +15,7 @@ interface DashboardLayoutProps {
 }
 
 const navItems = [
-  { id: "search" as const, label: "New Search", icon: Search, tip: "Research roles, search candidates, and enrich profiles" },
+  { id: "search" as const, label: "Research", icon: Search, tip: "Research roles, search candidates, and enrich profiles" },
   { id: "history" as const, label: "History", icon: Clock, tip: "Your past searches and research sessions" },
   { id: "pipeline" as const, label: "Pipeline", icon: Kanban, tip: "Active recruiting funnel — candidates you're pursuing now" },
   { id: "watchlist" as const, label: "Watchlist", icon: Bookmark, tip: "Tracking list for candidates to revisit later" },
