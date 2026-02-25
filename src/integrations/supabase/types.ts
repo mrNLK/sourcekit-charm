@@ -284,6 +284,45 @@ export type Database = {
           },
         ]
       }
+      watchlist: {
+        Row: {
+          company: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          linkedin_url: string | null
+          name: string
+          notes: string | null
+          stage: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          linkedin_url?: string | null
+          name: string
+          notes?: string | null
+          stage?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          company?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          linkedin_url?: string | null
+          name?: string
+          notes?: string | null
+          stage?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
