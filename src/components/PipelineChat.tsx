@@ -129,7 +129,7 @@ export default function PipelineChat({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setMessages((prev) => [...prev, { role: "assistant" as const, content: "Session expired. Please sign out and sign back in." }]);
-        setSending(false);
+        setIsLoading(false);
         return;
       }
       const token = session.access_token;

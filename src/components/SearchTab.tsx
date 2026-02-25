@@ -922,11 +922,19 @@ export default function SearchTab({
           setResearchRaw(data);
           const parsed = parseResearchOutput(data);
           setResearchData(parsed);
+          // Auto-fill search fields from research
           if (parsed.target_companies?.length) {
             const jobTitle = resJobTitle.trim() || "Engineer";
             const suggestions = parsed.target_companies.slice(0, 5).map((c) => `${jobTitle} at ${c.name}`);
             setSuggestedSearches(suggestions);
+            setSearchCompany(
+              parsed.target_companies.slice(0, 3).map((c) => c.name).join(", ")
+            );
           }
+          if (parsed.search_criteria?.keywords?.length) {
+            setSearchSkills(parsed.search_criteria.keywords.slice(0, 5).join(", "));
+          }
+          setSearchRole(resJobTitle.trim() || "");
           // Log research to search history
           const researchQuery = resJobTitle.trim()
             ? `${resJobTitle.trim()} at ${resCompanyName.trim()}`
@@ -1233,154 +1241,215 @@ export default function SearchTab({
 
           {/* Research results */}
           {researchData && !researching && (
-            <div className="space-y-3">
-              {(() => {
-                if (researchData.target_companies || researchData.eea_signals || researchData.search_criteria) {
-                  return (
-                    <>
-                      {researchData.target_companies && researchData.target_companies.length > 0 && (
-                        <div className="glass-card p-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-semibold text-foreground">
-                              Target Companies ({researchData.target_companies.length})
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {researchData.target_companies.map((c, i) => (
-                              <div key={i} className="rounded-lg bg-secondary/60 border border-border px-3 py-2">
-                                <p className="text-sm font-semibold text-foreground">{c.name}</p>
-                                {c.rationale && <p className="text-xs text-muted-foreground mt-0.5">{c.rationale}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+            <div className="space-y-4">
+              {/* Suggested Search - primary CTA */}
+              {(researchData.target_companies || researchData.search_criteria) && (
+                <div className="glass-card p-5 space-y-4 border border-primary/30">
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Suggested Search</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">edit before running</span>
+                  </div>
 
-                      {researchData.eea_signals && researchData.eea_signals.length > 0 && (
-                        <div className="glass-card p-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-semibold text-foreground">EEA Signals</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {researchData.eea_signals.map((signal, i) => (
-                              <div key={i} className="flex items-start gap-2">
-                                <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
-                                <p className="text-sm text-secondary-foreground">{signal}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Role / Title</Label>
+                      <Input
+                        value={searchRole}
+                        onChange={(e) => setSearchRole(e.target.value)}
+                        placeholder="Staff Engineer"
+                        className="bg-secondary border-border"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Company / Industry</Label>
+                        <Input
+                          value={searchCompany}
+                          onChange={(e) => setSearchCompany(e.target.value)}
+                          placeholder="Acme, Stripe..."
+                          className="bg-secondary border-border"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Location</Label>
+                        <Input
+                          value={searchLocation}
+                          onChange={(e) => setSearchLocation(e.target.value)}
+                          placeholder="SF, Remote..."
+                          className="bg-secondary border-border"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Skills / Keywords</Label>
+                      <Input
+                        value={searchSkills}
+                        onChange={(e) => setSearchSkills(e.target.value)}
+                        placeholder="React, Python, ML..."
+                        className="bg-secondary border-border"
+                      />
+                    </div>
 
-                      {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
-                        <div className="glass-card p-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Search className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-semibold text-foreground">Search Criteria</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {researchData.search_criteria.keywords.map((kw, i) => (
-                              <span
-                                key={i}
-                                className="inline-flex items-center gap-1 rounded-full bg-primary/20 text-primary px-3 py-1 text-xs font-medium"
-                              >
-                                {kw}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setResearchData({
-                                      ...researchData,
-                                      search_criteria: {
-                                        ...researchData.search_criteria,
-                                        keywords: researchData.search_criteria.keywords.filter((_, idx) => idx !== i),
-                                      },
-                                    })
-                                  }
-                                  className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400 transition-all cursor-pointer"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </span>
-                            ))}
+                    {/* Quick-fill chips from suggested searches */}
+                    {suggestedSearches.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Or try a variation</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {suggestedSearches.map((q, i) => (
                             <button
-                              type="button"
+                              key={i}
                               onClick={() => {
-                                const v = prompt("Add search criterion:");
-                                if (v && v.trim())
-                                  setResearchData({
-                                    ...researchData,
-                                    search_criteria: {
-                                      ...researchData.search_criteria,
-                                      keywords: [...researchData.search_criteria.keywords, v.trim()],
-                                    },
-                                  });
+                                const parts = q.match(/^(.+?)\s+at\s+(.+)$/);
+                                if (parts) {
+                                  setSearchRole(parts[1]);
+                                  setSearchCompany(parts[2]);
+                                } else {
+                                  setSearchRole(q);
+                                }
                               }}
-                              className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 text-primary/60 hover:text-primary hover:border-primary px-3 py-1 text-xs transition-colors cursor-pointer"
+                              className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                             >
-                              <Plus className="h-3 w-3" /> Add
+                              {q}
                             </button>
-                          </div>
+                          ))}
                         </div>
-                      )}
-                    </>
-                  );
-                }
+                      </div>
+                    )}
 
-                return (
-                  <div className="glass-card p-5" style={{ minHeight: 400 }}>
-                    <p className="text-xs text-muted-foreground mb-3">Research Output</p>
-                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {researchData.raw?.split("\n").map((line, i) => {
-                        const trimmed = line.trim();
-                        if (!trimmed) return <br key={i} />;
-                        if (trimmed.startsWith("### "))
-                          return (
-                            <p key={i} className="font-semibold text-foreground mt-4 mb-1">
-                              {trimmed.replace(/^###\s+/, "")}
-                            </p>
-                          );
-                        if (trimmed.startsWith("## "))
-                          return (
-                            <p key={i} className="font-bold text-foreground text-base mt-5 mb-1">
-                              {trimmed.replace(/^##\s+/, "")}
-                            </p>
-                          );
-                        if (trimmed.startsWith("# "))
-                          return (
-                            <p key={i} className="font-bold text-foreground text-lg mt-5 mb-2">
-                              {trimmed.replace(/^#\s+/, "")}
-                            </p>
-                          );
-                        if (trimmed.match(/^[-•*]\s/))
-                          return (
-                            <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
-                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                              <span>{trimmed.replace(/^[-•*]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
-                            </div>
-                          );
-                        if (trimmed.match(/^\d+[.)]\s/))
-                          return (
-                            <div key={i} className="flex items-start gap-2 ml-2 my-0.5">
-                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                              <span>{trimmed.replace(/^\d+[.)]\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</span>
-                            </div>
-                          );
-                        return (
-                          <p
-                            key={i}
-                            className="my-0.5"
-                            dangerouslySetInnerHTML={{
-                              __html: trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"),
-                            }}
-                          />
-                        );
-                      })}
+                    <div className="flex gap-2">
+                      <select
+                        value={searchCount}
+                        onChange={(e) => setSearchCount(Number(e.target.value))}
+                        className="px-2 py-1 rounded-md text-xs font-medium bg-secondary border border-border text-foreground"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                      </select>
+                      <Button
+                        className="flex-1 glow-accent"
+                        size="lg"
+                        disabled={isSearching || !searchRole.trim()}
+                        onClick={() => {
+                          setMode("search");
+                          setTimeout(() => {
+                            const form = document.getElementById("search-form") as HTMLFormElement;
+                            if (form) form.requestSubmit();
+                          }, 100);
+                        }}
+                      >
+                        <Search className="h-4 w-4 mr-2" /> Search Candidates
+                      </Button>
                     </div>
                   </div>
-                );
-              })()}
+                </div>
+              )}
+
+              {/* Collapsible research details */}
+              <details className="glass-card group">
+                <summary className="p-4 flex items-center gap-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
+                  <FlaskConical className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Research Details</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    {researchData.target_companies?.length || 0} companies, {researchData.eea_signals?.length || 0} signals
+                  </span>
+                </summary>
+                <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+                  {researchData.target_companies && researchData.target_companies.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-semibold text-foreground">Target Companies ({researchData.target_companies.length})</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {researchData.target_companies.map((c, i) => (
+                          <div key={i} className="rounded-lg bg-secondary/60 border border-border px-3 py-2">
+                            <p className="text-xs font-semibold text-foreground">{c.name}</p>
+                            {c.rationale && <p className="text-[11px] text-muted-foreground mt-0.5">{c.rationale}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {researchData.eea_signals && researchData.eea_signals.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-semibold text-foreground">EEA Signals</span>
+                      </div>
+                      <div className="space-y-1">
+                        {researchData.eea_signals.map((signal, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                            <p className="text-xs text-secondary-foreground">{signal}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {researchData.search_criteria && researchData.search_criteria.keywords.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Search className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-semibold text-foreground">Search Criteria</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {researchData.search_criteria.keywords.map((kw, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary/20 text-primary px-2.5 py-0.5 text-[11px] font-medium"
+                          >
+                            {kw}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setResearchData({
+                                  ...researchData,
+                                  search_criteria: {
+                                    ...researchData.search_criteria!,
+                                    keywords: researchData.search_criteria!.keywords.filter((_, idx) => idx !== i),
+                                  },
+                                })
+                              }
+                              className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400 transition-all cursor-pointer"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const v = prompt("Add search criterion:");
+                            if (v && v.trim())
+                              setResearchData({
+                                ...researchData,
+                                search_criteria: {
+                                  ...researchData.search_criteria!,
+                                  keywords: [...researchData.search_criteria!.keywords, v.trim()],
+                                },
+                              });
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 text-primary/60 hover:text-primary hover:border-primary px-2.5 py-0.5 text-[11px] transition-colors cursor-pointer"
+                        >
+                          <Plus className="h-2.5 w-2.5" /> Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Raw fallback */}
+                  {!researchData.target_companies && !researchData.eea_signals && !researchData.search_criteria && researchData.raw && (
+                    <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
+                      {researchData.raw}
+                    </div>
+                  )}
+                </div>
+              </details>
 
               {/* Citations / Basis */}
               {(researchData as any).basis && (researchData as any).basis.length > 0 && (
@@ -1404,62 +1473,26 @@ export default function SearchTab({
                 </div>
               )}
 
-              {/* Suggested Searches from Research */}
-              {suggestedSearches.length > 0 && (
-                <div className="glass-card p-4 space-y-3">
-                  <p className="text-xs font-semibold text-foreground">Suggested Searches</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {suggestedSearches.map((q, i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          const parts = q.match(/^(.+?)\s+at\s+(.+)$/);
-                          if (parts) {
-                            setSearchRole(parts[1]);
-                            setSearchCompany(parts[2]);
-                          } else {
-                            setSearchRole(q);
-                          }
-                          setMode("search");
-                          setTimeout(() => {
-                            const form = document.getElementById("search-form") as HTMLFormElement;
-                            if (form) form.requestSubmit();
-                          }, 100);
-                        }}
-                        className="px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <Button className="flex-1 glow-accent" onClick={handleFindCandidates}>
-                  <ArrowRight className="h-4 w-4 mr-2" /> Find Candidates
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={handleSaveResearch}
-                  disabled={savingResearch || researchSaved}
-                >
-                  {researchSaved ? (
-                    <>
-                      <Check className="h-4 w-4 mr-2" /> Saved
-                    </>
-                  ) : savingResearch ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Bookmark className="h-4 w-4 mr-2" /> Save Research
-                    </>
-                  )}
-                </Button>
-              </div>
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={handleSaveResearch}
+                disabled={savingResearch || researchSaved}
+              >
+                {researchSaved ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" /> Saved
+                  </>
+                ) : savingResearch ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Bookmark className="h-4 w-4 mr-2" /> Save Research
+                  </>
+                )}
+              </Button>
             </div>
           )}
         </>
