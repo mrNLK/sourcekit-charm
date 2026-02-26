@@ -898,7 +898,7 @@ export default function SearchTab({
   }, []);
 
   const pollResearch = useCallback(
-    async (runId: string) => {
+    async (runId: string, jobTitle?: string, companyName?: string) => {
       try {
         const { data, error } = await supabase.functions.invoke("research-role", {
           body: { action: "poll", run_id: runId },
@@ -922,10 +922,11 @@ export default function SearchTab({
           setResearchRaw(data);
           const parsed = parseResearchOutput(data);
           setResearchData(parsed);
+          const title = jobTitle || "Engineer";
+          const company = companyName || "";
           // Auto-fill search fields from research
           if (parsed.target_companies?.length) {
-            const jobTitle = resJobTitle.trim() || "Engineer";
-            const suggestions = parsed.target_companies.slice(0, 5).map((c) => `${jobTitle} at ${c.name}`);
+            const suggestions = parsed.target_companies.slice(0, 5).map((c) => `${title} at ${c.name}`);
             setSuggestedSearches(suggestions);
             setSearchCompany(
               parsed.target_companies.slice(0, 3).map((c) => c.name).join(", ")
@@ -934,15 +935,12 @@ export default function SearchTab({
           if (parsed.search_criteria?.keywords?.length) {
             setSearchSkills(parsed.search_criteria.keywords.slice(0, 5).join(", "));
           }
-          setSearchRole(resJobTitle.trim() || "");
+          setSearchRole(title);
           // Log research to search history
-          const researchQuery = resJobTitle.trim()
-            ? `${resJobTitle.trim()} at ${resCompanyName.trim()}`
-            : "Job spec research";
           const rawSummary = parsed.raw ? parsed.raw.substring(0, 500) : "";
-          saveSearchHistory({ role: resJobTitle.trim(), company: resCompanyName.trim() }, 0, "research", {
-            role: resJobTitle.trim(),
-            company: resCompanyName.trim(),
+          saveSearchHistory({ role: title, company }, 0, "research", {
+            role: title,
+            company,
             summary: rawSummary,
           });
           return;
@@ -992,18 +990,28 @@ export default function SearchTab({
     if (researchInput === "quick" && (!title || !companyVal)) return;
     if (researchInput === "full" && !specVal) return;
 
+    // Cancel any existing poll before starting a new one
+    if (researchPollRef.current) {
+      clearInterval(researchPollRef.current);
+      researchPollRef.current = null;
+    }
+
     setResearching(true);
     setResearchData(null);
     setResearchRaw(null);
     setResearchSaved(false);
     setResearchProgress("Starting research...");
 
+    // Capture values for the closure
+    const capturedTitle = title || "Role from job spec";
+    const capturedCompany = companyVal || "Company from job spec";
+
     try {
       const { data, error } = await supabase.functions.invoke("research-role", {
         body: {
           action: "start",
-          job_title: title || "Role from job spec",
-          company_name: companyVal || "Company from job spec",
+          job_title: capturedTitle,
+          company_name: capturedCompany,
           job_spec: specVal,
         },
       });
@@ -1015,7 +1023,7 @@ export default function SearchTab({
 
       setResearchRunId(runId);
       researchPollCountRef.current = 0;
-      researchPollRef.current = setInterval(() => pollResearch(runId), 5000);
+      researchPollRef.current = setInterval(() => pollResearch(runId, capturedTitle, capturedCompany), 5000);
     } catch (err: any) {
       setResearching(false);
       setResearchProgress("");
